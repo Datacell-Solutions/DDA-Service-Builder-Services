@@ -1,6 +1,6 @@
 // models/page.js
 const { DataTypes } = require("sequelize");
-const sequelize = require("../../../config/database");
+const sequelize = require("../../config/database");
 const bcrypt = require("bcryptjs");
 
 const Clients = sequelize.define(
@@ -36,8 +36,7 @@ const Clients = sequelize.define(
     },
     isActive: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: 1,
+      allowNull: false
     },
     createDate: {
       type: DataTypes.DATE,

@@ -1,16 +1,13 @@
 // controllers/pageController.js
-const { AppError } = require("../../../utils/errorHandler.js");
+const { AppError } = require("../../utils/errorHandler.js");
 const Clients = require("../models/client.js");
 const Sessions = require("../models/sessions.js");
-const { sequelize } = require("../../../config/database.js");
 const {
   signJwt,
-  decryptJwt,
   encryptText,
-  decryptText,
-} = require("../../../utils/security.js");
+} = require("../../utils/security.js");
 
-const generateGuid = require("../../../utils/guid.js");
+const generateGuid = require("../../utils/guid.js");
 
 // Generate a Token for the Client ID
 const getClientToken = async (req, res, next) => {

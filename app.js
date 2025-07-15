@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const sequelize = require("./config/database");
 const { attempSynchronization } = require("./utils/initDatabase");
+const router = require("./services/routes");
 
 dotenv.config();
 const port = process.env.PORT;
@@ -11,8 +12,7 @@ const app = express();
 app.use(express.json());
 // app.use(httpLogger);
 
-// app.use('/authentication', authRoutes);
-
+app.use("/api", router);
 app.get("/initialize-database", attempSynchronization);
 
 const startServer = async () => {

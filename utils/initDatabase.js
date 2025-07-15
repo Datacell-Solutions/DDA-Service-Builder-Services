@@ -3,14 +3,16 @@ const fs = require("fs");
 const path = require("path");
 const sequelize = require("../config/database.js");
 const { DataTypes } = require("sequelize");
-
-// Auth
-const Clients = require("../services/Authentication/models/client.js");
-const Sessions = require("../services/Authentication/models/sessions.js");
+const Service = require("../services/models/Service.js");
+const ServiceDocuments = require("../services/models/ServiceDocuments.js");
+const ServiceFees = require("../services/models/ServiceFees.js");
+const ServicePhases = require("../services/models/ServicePhases.js");
 
 const models = {
-  Clients,
-  Sessions,
+  Service,
+  ServiceDocuments,
+  ServiceFees,
+  ServicePhases,
 };
 
 async function attempSynchronization(req, res) {
