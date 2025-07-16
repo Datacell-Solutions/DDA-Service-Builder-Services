@@ -1,7 +1,7 @@
 // models/page.js
 const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
-const bcrypt = require("bcryptjs");
+const { v4: uuidv4 } = require("uuid");
 
 const ServiceFees = sequelize.define(
   "ServiceFees",
@@ -15,10 +15,15 @@ const ServiceFees = sequelize.define(
       type: DataTypes.STRING(100),
       unique: true,
       allowNull: false,
+      defaultValue: uuidv4,
     },
     serviceId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(100),
       allowNull: false,
+      references: {
+        model: 'Services',
+        key: 'dguid',
+      },
     },
     titleEn: {
       type: DataTypes.STRING(255),
@@ -61,6 +66,9 @@ const ServiceFees = sequelize.define(
   {
     tableName: "ServiceFees",
     timestamps: false, // Disable timestamps
+    defaultScope: {
+      attributes: { exclude: ["id", "serviceId", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
+    },
   }
 );
 module.exports = ServiceFees;

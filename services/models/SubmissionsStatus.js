@@ -1,11 +1,10 @@
 // models/page.js
 const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
-const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 
-const ServiceDocuments = sequelize.define(
-  "ServiceDocuments",
+const SubmissionsStatus = sequelize.define(
+  "SubmissionsStatus",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -18,21 +17,22 @@ const ServiceDocuments = sequelize.define(
       allowNull: false,
       defaultValue: uuidv4,
     },
-    serviceId: {
+    submissionId: {
       type: DataTypes.STRING(100),
       allowNull: false,
       references: {
-        model: 'Services',
+        model: 'Submissions',
         key: 'dguid',
       },
     },
-    documentNameEn: {
-      type: DataTypes.STRING(255),
+    status: {
+      type: DataTypes.ENUM('DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'),
       allowNull: false,
+      defaultValue: 'DRAFT'
     },
-    documentNameAr: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
+    comment: {
+      type: DataTypes.STRING(1024),
+      allowNull: true,
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -53,11 +53,11 @@ const ServiceDocuments = sequelize.define(
     },
   },
   {
-    tableName: "ServiceDocuments",
+    tableName: "SubmissionsStatus",
     timestamps: false, // Disable timestamps
     defaultScope: {
-      attributes: { exclude: ["id", "serviceId", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
+      attributes: { exclude: ["id", "submissionId", "createdBy", "updatedAt", "updatedBy"] },
     },
   }
 );
-module.exports = ServiceDocuments;
+module.exports = SubmissionsStatus;

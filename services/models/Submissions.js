@@ -1,11 +1,10 @@
 // models/page.js
 const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
-const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 
-const ServiceDocuments = sequelize.define(
-  "ServiceDocuments",
+const Submissions = sequelize.define(
+  "Submissions",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -26,12 +25,8 @@ const ServiceDocuments = sequelize.define(
         key: 'dguid',
       },
     },
-    documentNameEn: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    documentNameAr: {
-      type: DataTypes.STRING(255),
+    phaseKey: {
+      type: DataTypes.STRING(100),
       allowNull: false,
     },
     createdAt: {
@@ -53,11 +48,11 @@ const ServiceDocuments = sequelize.define(
     },
   },
   {
-    tableName: "ServiceDocuments",
+    tableName: "Submissions",
     timestamps: false, // Disable timestamps
     defaultScope: {
       attributes: { exclude: ["id", "serviceId", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
     },
   }
 );
-module.exports = ServiceDocuments;
+module.exports = Submissions;

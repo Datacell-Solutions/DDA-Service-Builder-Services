@@ -1,7 +1,27 @@
-const { v4: uuidv4 } = require('uuid');
-const { Services, ServiceDocuments, ServiceFees } = require('../models');
+const {
+  Services,
+  ServiceDocuments,
+  ServiceFees,
+  Submissions,
+  SubmissionsStatus,
+} = require("../models");
+const {
+  successResponse,
+  errorResponse,
+} = require("../../utils/responseHandler");
+const { v4: uuidv4 } = require("uuid");
 
-const addService = async (req, res, next) => {
+const SubmissionStatus = Object.freeze({
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+});
+
+//Add createdBy and updatedBy fields
+const addService = async (req, res) => {
+  //Change this to read from the token
+  const entityId = uuidv4();
   const {
     nameEn,
     nameAr,
@@ -16,19 +36,15 @@ const addService = async (req, res, next) => {
     ServiceChannelApply,
     ServiceChannelDeliver,
     ServiceChannelPay,
-    createdBy,
     documents,
     fees,
   } = req.body;
 
   const t = await Services.sequelize.transaction();
-
   try {
-    const serviceDguid = uuidv4();
-
     const newService = await Services.create(
       {
-        dguid: serviceDguid,
+        entityId: entityId,
         nameEn,
         nameAr,
         serviceCode,
@@ -42,22 +58,19 @@ const addService = async (req, res, next) => {
         ServiceChannelApply,
         ServiceChannelDeliver,
         ServiceChannelPay,
-        createdBy,
       },
       { transaction: t }
     );
 
-    const serviceId = newService.id;
+    const serviceId = newService.dguid;
 
     if (Array.isArray(documents)) {
       for (const doc of documents) {
         await ServiceDocuments.create(
           {
-            dguid: uuidv4(),
             serviceId,
             documentNameEn: doc.documentNameEn,
             documentNameAr: doc.documentNameAr,
-            createdBy,
           },
           { transaction: t }
         );
@@ -68,39 +81,45 @@ const addService = async (req, res, next) => {
       for (const fee of fees) {
         await ServiceFees.create(
           {
-            dguid: uuidv4(),
             serviceId,
             titleEn: fee.titleEn,
             titleAr: fee.titleAr,
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
-            createdBy,
           },
           { transaction: t }
         );
       }
     }
 
+    const newSubmission = await Submissions.create(
+      {
+        serviceId: serviceId,
+        phaseKey: process.env.DEFINE_PHASE_KEY,
+      },
+      { transaction: t }
+    );
+
+    await SubmissionsStatus.create(
+      {
+        submissionId: newSubmission.dguid,
+        status: SubmissionStatus.DRAFT,
+      },
+      { transaction: t }
+    );
+
     await t.commit();
-    return res.status(201).json({
-      success: true,
-      message: "Service added successfully",
-      serviceId,
-    });
+    return res.json(successResponse(newService.dguid));
   } catch (error) {
-    await t.rollback();
     console.error(error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.json(errorResponse("Internal server error", 500));
   }
 };
 
 const updateService = async (req, res) => {
   const { serviceId } = req.params;
   const {
+    submissionId,
     nameEn,
     nameAr,
     serviceCode,
@@ -114,18 +133,19 @@ const updateService = async (req, res) => {
     ServiceChannelApply,
     ServiceChannelDeliver,
     ServiceChannelPay,
-    updatedBy,
     documents,
     fees,
   } = req.body;
 
   const t = await Services.sequelize.transaction();
-
   try {
-    const service = await Services.findByPk(serviceId);
+    const service = await Services.findOne({
+      where: { dguid: serviceId },
+      attributes: { include: ["id"] },
+    });
     if (!service) {
       await t.rollback();
-      return res.status(404).json({ success: false, message: "Service not found" });
+      return res.json(errorResponse("Service not found", 404));
     }
 
     await service.update(
@@ -143,23 +163,23 @@ const updateService = async (req, res) => {
         ServiceChannelApply,
         ServiceChannelDeliver,
         ServiceChannelPay,
-        updatedBy,
         updatedAt: new Date(),
       },
       { transaction: t }
     );
 
     if (Array.isArray(documents)) {
-      await ServiceDocuments.destroy({ where: { serviceId: serviceId }, transaction: t });
+      await ServiceDocuments.destroy({
+        where: { serviceId: service.dguid },
+        transaction: t,
+      });
 
       for (const doc of documents) {
         await ServiceDocuments.create(
           {
-            dguid: uuidv4(),
-            serviceId: serviceId,
+            serviceId: service.dguid,
             documentNameEn: doc.documentNameEn,
             documentNameAr: doc.documentNameAr,
-            createdBy: updatedBy,
           },
           { transaction: t }
         );
@@ -167,84 +187,439 @@ const updateService = async (req, res) => {
     }
 
     if (Array.isArray(fees)) {
-      await ServiceFees.destroy({ where: { serviceId: serviceId }, transaction: t });
+      await ServiceFees.destroy({
+        where: { serviceId: service.dguid },
+        transaction: t,
+      });
 
       for (const fee of fees) {
         await ServiceFees.create(
           {
-            dguid: uuidv4(),
-            serviceId: serviceId,
+            serviceId: service.dguid,
             titleEn: fee.titleEn,
             titleAr: fee.titleAr,
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
-            createdBy: updatedBy,
           },
           { transaction: t }
         );
       }
     }
 
-    await t.commit();
+    const submission = await Submissions.findOne({
+      attributes: { include: ["id"] },
+      where: { dguid: submissionId },
+    });
+    await SubmissionsStatus.create(
+      {
+        submissionId: submission.dguid,
+        status: SubmissionStatus.DRAFT,
+      },
+      { transaction: t }
+    );
 
-    return res.status(200).json({
-      success: true,
-      message: "Service updated successfully",
-    });
+    await t.commit();
+    return res.json(successResponse(true));
   } catch (error) {
-    await t.rollback();
     console.error(error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.json(errorResponse("Internal server error", 500));
   }
 };
 
 const getService = async (req, res) => {
   const { serviceId } = req.params;
+
   try {
-    const service = await Services.findByPk(serviceId, {
+    const service = await Services.findOne({
+      where: { dguid: serviceId },
       include: [
         {
           model: ServiceDocuments,
-          as: 'documents',
-          where: { serviceId },
-          required: false,
+          as: "documents",
+          required: true,
         },
         {
           model: ServiceFees,
-          as: 'fees',
-          where: { serviceId },
-          required: false,
+          as: "fees",
+          required: true,
         },
+        {
+          model: Submissions,
+          as: "submissions",
+          required: true,
+          include: [
+            {
+              model: SubmissionsStatus,
+              as: "submissionsStatus",
+              attributes: ["dguid", "status", "comment", "createdAt"],
+            },
+          ],
+        },
+      ],
+      order: [
+        [
+          { model: Submissions, as: "submissions" },
+          { model: SubmissionsStatus, as: "submissionsStatus" },
+          "createdAt",
+          "DESC",
+        ],
       ],
     });
 
     if (!service) {
-      return res.status(404).json({
-        success: false,
-        message: "Service not found",
-      });
+      return res.json(errorResponse("Service not found", 404));
+    }
+    const transformedSubmissions = service.submissions.map((submission) => {
+      const statuses = submission.submissionsStatus || [];
+      const currentStatus = statuses.length > 0 ? statuses[0].status : null;
+
+      return {
+        ...submission.toJSON(),
+        currentStatus,
+      };
+    });
+
+    const result = {
+      ...service.toJSON(),
+      submissions: transformedSubmissions,
+    };
+
+    return res.json(successResponse(result));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const getAllServices = async (req, res) => {
+  try {
+    const services = await Services.findAll({
+      attributes: { include: ["id"] },
+      include: [
+        {
+          model: ServiceDocuments,
+          as: "documents",
+          required: true,
+        },
+        {
+          model: ServiceFees,
+          as: "fees",
+          required: true,
+        },
+        {
+          model: Submissions,
+          as: "submissions",
+          required: true,
+          include: [
+            {
+              model: SubmissionsStatus,
+              as: "submissionsStatus",
+              attributes: ["dguid", "status", "comment", "createdAt"],
+            },
+          ],
+        },
+      ],
+      order: [
+        [
+          { model: Submissions, as: "submissions" },
+          { model: SubmissionsStatus, as: "submissionsStatus" },
+          "createdAt",
+          "DESC",
+        ],
+      ],
+    });
+
+    // Transform each service and their submissions to include `currentStatus`
+    const transformedServices = services.map((service) => {
+      const submissions =
+        service.submissions?.map((submission) => {
+          const submissionJson = submission.toJSON();
+          const statuses = submissionJson.submissionsStatus || [];
+          const currentStatus = statuses.length > 0 ? statuses[0].status : null;
+
+          // Remove submissionsStatus
+          delete submissionJson.submissionsStatus;
+
+          return {
+            ...submissionJson,
+            currentStatus,
+          };
+        }) || [];
+
+      return {
+        ...service.toJSON(),
+        submissions,
+      };
+    });
+
+    return res.json(successResponse(transformedServices));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const getSubmissionDetails = async (req, res) => {
+  const { submissionId } = req.params;
+  try {
+    const submission = await Submissions.findOne({
+      where: { dguid: submissionId },
+      include: [
+        {
+          model: Services,
+          as: "service",
+        },
+        {
+          model: SubmissionsStatus,
+          as: "submissionsStatus",
+          attributes: ["dguid", "status", "comment", "createdAt"],
+        },
+      ],
+      order: [
+        [
+          { model: SubmissionsStatus, as: "submissionsStatus" },
+          "createdAt",
+          "DESC",
+        ],
+      ],
+    });
+
+    if (!submission) {
+      return res.json(errorResponse("Submission not found", 404));
     }
 
-    return res.status(200).json({
-      success: true,
-      data: service,
+    const statusHistory = submission.submissionsStatus || [];
+    const currentStatus = statusHistory[0] || null;
+
+    return res.json({
+      id: submission.dguid,
+      dguid: submission.dguid,
+      service: submission.service,
+      currentStatus: currentStatus.status,
+      submissionsStatus: statusHistory,
     });
+  } catch (err) {
+    console.error(err);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const submitUserAction = async (req, res) => {
+  const { serviceId, action, comment, userRole, userType } = req.params;
+  //const userRole = "";
+  try {
+    const service = await Services.findOne({
+      where: { dguid: serviceId },
+      include: [
+        {
+          model: ServiceDocuments,
+          as: "documents",
+          required: true,
+        },
+        {
+          model: ServiceFees,
+          as: "fees",
+          required: true,
+        },
+        {
+          model: Submissions,
+          as: "submissions",
+          required: true,
+          include: [
+            {
+              model: SubmissionsStatus,
+              as: "submissionsStatus",
+              attributes: ["dguid", "status", "comment", "createdAt"],
+            },
+          ],
+        },
+      ],
+      order: [
+        [
+          { model: Submissions, as: "submissions" },
+          { model: SubmissionsStatus, as: "submissionsStatus" },
+          "createdAt",
+          "DESC",
+        ],
+      ],
+    });
+
+    if (!service) {
+      return res.json(errorResponse("Service not found", 404));
+    }
+
+    const transformedSubmissions = service.submissions.map((submission) => {
+      const submissionJson = submission.toJSON();
+      const statuses = submissionJson.submissionsStatus || [];
+      const currentStatus = statuses.length > 0 ? statuses[0].status : null;
+
+      // Remove submissionsStatus
+      delete submissionJson.submissionsStatus;
+
+      return {
+        ...submissionJson,
+        currentStatus,
+      };
+    });
+
+    const newService = {
+      ...service.toJSON(),
+      submissions: transformedSubmissions,
+    };
+
+    switch (action) {
+      case "define.submit":
+        if (userType !== "entity" && userRole !== "business") {
+          return res.json(
+            errorResponse(
+              "You are not authorized to perform this action",
+              403
+            )
+          );
+        }
+        if (newService.submissions.length > 0) {
+          const lastSubmission = newService.submissions[0];
+          if (lastSubmission.currentStatus !== SubmissionStatus.DRAFT) {
+            return res.json(
+              errorResponse(
+                "Submission must be in DRAFT status before it can be SUBMITTED",
+                400
+              )
+            );
+          }
+          return await submitPhase(lastSubmission.dguid, action, comment);
+        } else {
+          return res
+            .status(500)
+            .json(errorResponse("Internal server error", 500));
+        }
+      case "define.approve":
+        if (userType !== "entity" && userRole !== "business") {
+          return res.json(
+            errorResponse(
+              "You are not authorized to perform this action",
+              403
+            )
+          );
+        }
+        if (newService.submissions.length > 0) {
+          const lastSubmission = newService.submissions[0];
+          if (lastSubmission.currentStatus !== SubmissionStatus.SUBMITTED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in SUBMIT status before it can be APPROVED",
+                400
+              )
+            );
+          }
+          return await approvePhase(lastSubmission.dguid, action, comment);
+        } else {
+          return res
+            .status(500)
+            .json(errorResponse("Internal server error", 500));
+        }
+      case "define.reject":
+        if (userType !== "entity" && userRole !== "business") {
+          return res.json(
+            errorResponse(
+              "You are not authorized to perform this action",
+              403
+            )
+          );
+        }
+        if (newService.submissions.length > 0) {
+          const lastSubmission = newService.submissions[0];
+          if (lastSubmission.currentStatus !== SubmissionStatus.SUBMITTED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in SUBMIT status before it can be REJECTED",
+                400
+              )
+            );
+          }
+          return await rejectPhase(lastSubmission.dguid, action, comment);
+        } else {
+          return res
+            .status(500)
+            .json(errorResponse("Internal server error", 500));
+        }
+      default:
+        return res.json(errorResponse("Invalid action", 400));
+    }
   } catch (error) {
-    console.error("Get Service Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    console.error("approveStep error:", error);
+    return res.status(500).json(errorResponse("Internal server error", 500));
+  }
+};
+
+const submitPhase = async (submissionId, comment) => {
+  const t = await Services.sequelize.transaction();
+
+  try {
+    await SubmissionsStatus.create(
+      {
+        submissionId,
+        status: SubmissionStatus.SUBMITTED,
+        comment: comment,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return res.json(successResponse(true));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const approvePhase = async (submissionId, comment) => {
+  const t = await Services.sequelize.transaction();
+
+  try {
+    await SubmissionsStatus.create(
+      {
+        submissionId,
+        status: "APPROVED",
+        comment: comment,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return res.json(successResponse(true));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const rejectPhase = async (submissionId, comment) => {
+  const t = await Services.sequelize.transaction();
+
+  try {
+    await SubmissionsStatus.create(
+      {
+        submissionId,
+        status: "REJECTED",
+        comment: comment,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    return res.json(successResponse(true));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
   }
 };
 
 module.exports = {
   addService,
   updateService,
-  getService
+  getService,
+  getAllServices,
+  submitUserAction,
+  getSubmissionDetails,
 };

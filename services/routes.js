@@ -14,6 +14,9 @@ router.post('/Client/Login', Clients.getClientToken);
 
 router.post('/service/add', Service.addService);
 router.post('/service/update/:serviceId', Service.updateService);
+router.get('/service/getAll', Service.getAllServices);
 router.get('/service/get/:serviceId', Service.getService);
+router.post('/service/submitUserAction', Service.submitUserAction);
+router.get('/service/getSubmissionDetails/:submissionId', Service.getSubmissionDetails);
 
 module.exports = router;

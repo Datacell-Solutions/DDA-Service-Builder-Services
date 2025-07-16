@@ -1,6 +1,7 @@
 // models/page.js
 const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
+const { v4: uuidv4 } = require("uuid");
 
 const Services = sequelize.define(
   "Services",
@@ -11,6 +12,12 @@ const Services = sequelize.define(
       autoIncrement: true,
     },
     dguid: {
+      type: DataTypes.STRING(100),
+      unique: true,
+      allowNull: false,
+      defaultValue: uuidv4,
+    },
+    entityId: {
       type: DataTypes.STRING(100),
       unique: true,
       allowNull: false,
@@ -88,6 +95,9 @@ const Services = sequelize.define(
   {
     tableName: "Services",
     timestamps: false, // Disable timestamps
+    defaultScope: {
+      attributes: { exclude: ["id", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
+    },
   }
 );
 module.exports = Services;
