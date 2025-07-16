@@ -10,15 +10,165 @@ const {
   errorResponse,
 } = require("../../utils/responseHandler");
 const { v4: uuidv4 } = require("uuid");
+const path = require("path");
+const multer = require("multer");
+const fs = require("fs");
 
-const SubmissionStatus = Object.freeze({
-  DRAFT: 'DRAFT',
-  SUBMITTED: 'SUBMITTED',
-  APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED',
+const folder = "attachments";
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, "../..", folder);
+    fs.mkdirSync(uploadPath, { recursive: true });
+
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const extension = path.extname(file.originalname);
+    cb(null, `${uniqueSuffix}${extension}`);
+  },
 });
 
+const upload = multer({ storage: storage });
+
+const SubmissionStatus = Object.freeze({
+  DRAFT: "DRAFT",
+  SUBMITTED: "SUBMITTED",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+});
+
+const actionsMatrix = {
+  [process.env.DEFINE_PHASE_KEY]: {
+    "entity business": {
+      DRAFT: ["define.submit"],
+      SUBMITTED: [],
+      APPROVED: ["envisioning.draft"],
+      REJECTED: ["define.submit"],
+    },
+    "entity technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda business": {
+      DRAFT: [],
+      SUBMITTED: ["define.approve", "define.reject"],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+  },
+
+  [process.env.ENVISIONING_PHASE_KEY]: {
+    "entity business": {
+      DRAFT: ["envisioning.submit"],
+      SUBMITTED: [],
+      APPROVED: ["design.draft"],
+      REJECTED: ["envisioning.submit"],
+    },
+    "entity technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda business": {
+      DRAFT: [],
+      SUBMITTED: ["envisioning.approve", "envisioning.reject"],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+  },
+
+  [process.env.DESIGN_PHASE_KEY]: {
+    "entity business": {
+      DRAFT: ["design.submit"],
+      SUBMITTED: [],
+      APPROVED: ["develop.draft"],
+      REJECTED: ["design.submit"],
+    },
+    "entity technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda business": {
+      DRAFT: [],
+      SUBMITTED: ["design.approve", "design.reject"],
+      APPROVED: [],
+      REJECTED: [],
+    },
+    "dda technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      APPROVED: [],
+      REJECTED: [],
+    },
+  },
+
+  [process.env.DEVELOPMENT_PHASE_KEY]: {
+    "entity business": {
+      DRAFT: [],
+      SUBMITTED: [],
+      "BUSINESS APPROVED": [],
+      "BUSINESS REJECTED": [],
+      "TECHNICAL APPROVED": [],
+      "TECHNICAL REJECTED": [],
+    },
+    "entity technical": {
+      DRAFT: ["develop.submit"],
+      SUBMITTED: [],
+      "BUSINESS APPROVED": [],
+      "BUSINESS REJECTED": ["develop.submit"],
+      "TECHNICAL APPROVED": [],
+      "TECHNICAL REJECTED": ["develop.submit"],
+    },
+    "dda business": {
+      DRAFT: [],
+      SUBMITTED: ["develop.approve", "develop.reject"],
+      "BUSINESS APPROVED": [],
+      "BUSINESS REJECTED": [],
+      "TECHNICAL APPROVED": [],
+      "TECHNICAL REJECTED": [],
+    },
+    "dda technical": {
+      DRAFT: [],
+      SUBMITTED: [],
+      "BUSINESS APPROVED": ["develop.approve", "develop.reject"],
+      "BUSINESS REJECTED": [],
+      "TECHNICAL APPROVED": [],
+      "TECHNICAL REJECTED": [],
+    },
+  },
+};
+
+function getAllowedActions(userType, userRole, phase, currentStatus) {
+  const fullRole = `${userType} ${userRole}`;
+  const phaseData = actionsMatrix[phase];
+  if (!phaseData) return [];
+
+  const roleData = phaseData[fullRole];
+  if (!roleData) return [];
+
+  return roleData[currentStatus] || [];
+}
+
 //Add createdBy and updatedBy fields
+//check service owner
 const addService = async (req, res) => {
   //Change this to read from the token
   const entityId = uuidv4();
@@ -228,7 +378,9 @@ const updateService = async (req, res) => {
 
 const getService = async (req, res) => {
   const { serviceId } = req.params;
-
+  const userRole = req.headers["userrole"];
+  const userType = req.headers["usertype"];
+  console.log("headers:", req.headers);
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
@@ -279,9 +431,26 @@ const getService = async (req, res) => {
       };
     });
 
+    const currentSubmission = transformedSubmissions[0];
+
+    console.log("Current Submission:", {
+      userType,
+      userRole,
+      phaseKey: currentSubmission.phaseKey,
+      currentStatus: currentSubmission.currentStatus,
+    });
+
+    const actions = getAllowedActions(
+      userType,
+      userRole,
+      currentSubmission.phaseKey,
+      currentSubmission.currentStatus
+    );
+
     const result = {
       ...service.toJSON(),
       submissions: transformedSubmissions,
+      actions,
     };
 
     return res.json(successResponse(result));
@@ -292,6 +461,8 @@ const getService = async (req, res) => {
 };
 
 const getAllServices = async (req, res) => {
+  const userRole = req.headers["userrole"];
+  const userType = req.headers["usertype"];
   try {
     const services = await Services.findAll({
       attributes: { include: ["id"] },
@@ -329,7 +500,6 @@ const getAllServices = async (req, res) => {
       ],
     });
 
-    // Transform each service and their submissions to include `currentStatus`
     const transformedServices = services.map((service) => {
       const submissions =
         service.submissions?.map((submission) => {
@@ -337,7 +507,6 @@ const getAllServices = async (req, res) => {
           const statuses = submissionJson.submissionsStatus || [];
           const currentStatus = statuses.length > 0 ? statuses[0].status : null;
 
-          // Remove submissionsStatus
           delete submissionJson.submissionsStatus;
 
           return {
@@ -346,9 +515,18 @@ const getAllServices = async (req, res) => {
           };
         }) || [];
 
+      const currentSubmission = submissions[0];
+      const actions = getAllowedActions(
+        userType,
+        userRole,
+        currentSubmission.phaseKey,
+        currentSubmission.currentStatus
+      );
+
       return {
         ...service.toJSON(),
         submissions,
+        actions,
       };
     });
 
@@ -405,8 +583,7 @@ const getSubmissionDetails = async (req, res) => {
 };
 
 const submitUserAction = async (req, res) => {
-  const { serviceId, action, comment, userRole, userType } = req.params;
-  //const userRole = "";
+  const { serviceId, action, comment, userRole, userType } = req.body;
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
@@ -467,82 +644,51 @@ const submitUserAction = async (req, res) => {
       submissions: transformedSubmissions,
     };
 
+    const lastSubmission = newService.submissions[0];
+    if (!lastSubmission) {
+      return res.json(
+        errorResponse("No submissions found for this service", 404)
+      );
+    }
+
+    const actions = getAllowedActions(
+      userType,
+      userRole,
+      lastSubmission.phaseKey,
+      lastSubmission.currentStatus
+    );
+
+    if (!actions.includes(action)) {
+      return res.json(
+        errorResponse("You are not authorized to perform this action", 403)
+      );
+    }
+
     switch (action) {
       case "define.submit":
-        if (userType !== "entity" && userRole !== "business") {
-          return res.json(
-            errorResponse(
-              "You are not authorized to perform this action",
-              403
-            )
-          );
-        }
-        if (newService.submissions.length > 0) {
-          const lastSubmission = newService.submissions[0];
-          if (lastSubmission.currentStatus !== SubmissionStatus.DRAFT) {
-            return res.json(
-              errorResponse(
-                "Submission must be in DRAFT status before it can be SUBMITTED",
-                400
-              )
-            );
-          }
-          return await submitPhase(lastSubmission.dguid, action, comment);
-        } else {
-          return res
-            .status(500)
-            .json(errorResponse("Internal server error", 500));
-        }
+        return await submitPhase(
+          res,
+          lastSubmission.dguid,
+          lastSubmission.currentStatus,
+          comment
+        );
       case "define.approve":
-        if (userType !== "entity" && userRole !== "business") {
-          return res.json(
-            errorResponse(
-              "You are not authorized to perform this action",
-              403
-            )
-          );
-        }
-        if (newService.submissions.length > 0) {
-          const lastSubmission = newService.submissions[0];
-          if (lastSubmission.currentStatus !== SubmissionStatus.SUBMITTED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in SUBMIT status before it can be APPROVED",
-                400
-              )
-            );
-          }
-          return await approvePhase(lastSubmission.dguid, action, comment);
-        } else {
-          return res
-            .status(500)
-            .json(errorResponse("Internal server error", 500));
-        }
+        return await approvePhase(
+          res,
+          lastSubmission.dguid,
+          lastSubmission.currentStatus,
+          action,
+          comment
+        );
       case "define.reject":
-        if (userType !== "entity" && userRole !== "business") {
-          return res.json(
-            errorResponse(
-              "You are not authorized to perform this action",
-              403
-            )
-          );
-        }
-        if (newService.submissions.length > 0) {
-          const lastSubmission = newService.submissions[0];
-          if (lastSubmission.currentStatus !== SubmissionStatus.SUBMITTED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in SUBMIT status before it can be REJECTED",
-                400
-              )
-            );
-          }
-          return await rejectPhase(lastSubmission.dguid, action, comment);
-        } else {
-          return res
-            .status(500)
-            .json(errorResponse("Internal server error", 500));
-        }
+        return await rejectPhase(
+          res,
+          lastSubmission.dguid,
+          lastSubmission.currentStatus,
+          action,
+          comment
+        );
+        
       default:
         return res.json(errorResponse("Invalid action", 400));
     }
@@ -552,9 +698,17 @@ const submitUserAction = async (req, res) => {
   }
 };
 
-const submitPhase = async (submissionId, comment) => {
-  const t = await Services.sequelize.transaction();
+const submitPhase = async (res, submissionId, currentStatus, comment) => {
+  if (currentStatus !== SubmissionStatus.DRAFT) {
+    return res.json(
+      errorResponse(
+        "Submission must be in DRAFT status before it can be SUBMITTED",
+        400
+      )
+    );
+  }
 
+  const t = await Services.sequelize.transaction();
   try {
     await SubmissionsStatus.create(
       {
@@ -573,9 +727,23 @@ const submitPhase = async (submissionId, comment) => {
   }
 };
 
-const approvePhase = async (submissionId, comment) => {
-  const t = await Services.sequelize.transaction();
+const approvePhase = async (
+  res,
+  submissionId,
+  currentStatus,
+  action,
+  comment
+) => {
+  if (currentStatus !== SubmissionStatus.SUBMITTED) {
+    return res.json(
+      errorResponse(
+        "Submission must be in SUBMIT status before it can be APPROVED",
+        400
+      )
+    );
+  }
 
+  const t = await Services.sequelize.transaction();
   try {
     await SubmissionsStatus.create(
       {
@@ -594,9 +762,23 @@ const approvePhase = async (submissionId, comment) => {
   }
 };
 
-const rejectPhase = async (submissionId, comment) => {
-  const t = await Services.sequelize.transaction();
+const rejectPhase = async (
+  res,
+  submissionId,
+  currentStatus,
+  action,
+  comment
+) => {
+  if (currentStatus !== SubmissionStatus.SUBMITTED) {
+    return res.json(
+      errorResponse(
+        "Submission must be in SUBMIT status before it can be REJECTED",
+        400
+      )
+    );
+  }
 
+  const t = await Services.sequelize.transaction();
   try {
     await SubmissionsStatus.create(
       {
@@ -615,6 +797,46 @@ const rejectPhase = async (submissionId, comment) => {
   }
 };
 
+const addTestCases = async (req, res) => {
+  const { serviceId } = req.body;
+
+  try {
+    const service = await Services.findOne({
+      where: { dguid: serviceId },
+      attributes: { include: ["id"] },
+    });
+    if (!service) {
+      await t.rollback();
+      return res.json(errorResponse("Service not found", 404));
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ code: 400, message: "No file uploaded" });
+    }
+
+    const oldPath = req.file.path;
+
+    const extension = path.extname(req.file.originalname);
+    const newFilename = `${service.nameEn} Test Cases${extension}`;
+    const newPath = path.join(path.dirname(oldPath), newFilename);
+
+    fs.renameSync(oldPath, newPath);
+
+    const filePath = `/${folder}/${newFilename}`;
+
+    res.status(200).json({
+      code: 201,
+      data: filePath,
+      message: "Success",
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ code: 500, message: "Internal server error" });
+  }
+};
+
 module.exports = {
   addService,
   updateService,
@@ -622,4 +844,6 @@ module.exports = {
   getAllServices,
   submitUserAction,
   getSubmissionDetails,
+  addTestCases,
+  upload,
 };

@@ -26,7 +26,7 @@ const SubmissionsStatus = sequelize.define(
       },
     },
     status: {
-      type: DataTypes.ENUM('DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'),
+      type: DataTypes.STRING(100),
       allowNull: false,
       defaultValue: 'DRAFT'
     },

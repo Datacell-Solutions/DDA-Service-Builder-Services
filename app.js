@@ -3,11 +3,14 @@ const dotenv = require("dotenv");
 const sequelize = require("./config/database");
 const { attempSynchronization } = require("./utils/initDatabase");
 const router = require("./services/routes");
+const path = require("path");
+
+const app = express();
+
+app.use("/attachments", express.static(path.join(__dirname, "attachments")));
 
 dotenv.config();
 const port = process.env.PORT;
-
-const app = express();
 
 app.use(express.json());
 // app.use(httpLogger);
