@@ -13,7 +13,7 @@ const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 const multer = require("multer");
 const fs = require("fs");
-const { Op } = require('sequelize');
+const { Op } = require("sequelize");
 
 const folder = "attachments";
 const storage = multer.diskStorage({
@@ -37,6 +37,10 @@ const SubmissionStatus = Object.freeze({
   SUBMITTED: "SUBMITTED",
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
+  TECHNICAL_APPROVED: "TECHNICAL APPROVED",
+  TECHNICAL_REJECTED: "TECHNICAL REJECTED",
+  BUSINESS_APPROVED: "BUSINESS APPROVED",
+  BUSINESS_REJECTED: "BUSINESS REJECTED",
 });
 
 const actionsMatrix = {
@@ -125,34 +129,34 @@ const actionsMatrix = {
     "entity business": {
       DRAFT: [],
       SUBMITTED: [],
-      "BUSINESS APPROVED": [],
-      "BUSINESS REJECTED": [],
-      "TECHNICAL APPROVED": [],
-      "TECHNICAL REJECTED": [],
+      BUSINESS_APPROVED: [],
+      BUSINESS_REJECTED: [],
+      TECHNICAL_APPROVED: [],
+      TECHNICAL_REJECTED: [],
     },
     "entity technical": {
       DRAFT: ["develop.submit"],
       SUBMITTED: [],
-      "BUSINESS APPROVED": [],
-      "BUSINESS REJECTED": ["develop.submit"],
-      "TECHNICAL APPROVED": [],
-      "TECHNICAL REJECTED": ["develop.submit"],
+      BUSINESS_APPROVED: [],
+      BUSINESS_REJECTED: ["develop.submit"],
+      TECHNICAL_APPROVED: [],
+      TECHNICAL_REJECTED: ["develop.submit"],
     },
     "dda business": {
       DRAFT: [],
       SUBMITTED: ["develop.approve", "develop.reject"],
-      "BUSINESS APPROVED": [],
-      "BUSINESS REJECTED": [],
-      "TECHNICAL APPROVED": [],
-      "TECHNICAL REJECTED": [],
+      BUSINESS_APPROVED: [],
+      BUSINESS_REJECTED: [],
+      TECHNICAL_APPROVED: [],
+      TECHNICAL_REJECTED: [],
     },
     "dda technical": {
       DRAFT: [],
       SUBMITTED: [],
-      "BUSINESS APPROVED": ["develop.approve", "develop.reject"],
-      "BUSINESS REJECTED": [],
-      "TECHNICAL APPROVED": [],
-      "TECHNICAL REJECTED": [],
+      BUSINESS_APPROVED: ["develop.approve", "develop.reject"],
+      BUSINESS_REJECTED: [],
+      TECHNICAL_APPROVED: [],
+      TECHNICAL_REJECTED: [],
     },
   },
 };
@@ -270,10 +274,12 @@ const addService = async (req, res) => {
       SubmissionStatus.DRAFT
     );
     await t.commit();
-    return res.json(successResponse({
-      serviceId: newService.dguid,
-      actions,
-    }));
+    return res.json(
+      successResponse({
+        serviceId: newService.dguid,
+        actions,
+      })
+    );
   } catch (error) {
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
@@ -515,9 +521,9 @@ const getAllServices = async (req, res) => {
       );
       const latestSubmission = sortedSubmissions[0];
 
-      const sortedStatuses = [...(latestSubmission?.submissionsStatus || [])].sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
+      const sortedStatuses = [
+        ...(latestSubmission?.submissionsStatus || []),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       const latestStatus = sortedStatuses[0]?.status;
 
       if (userRole === "technical") {
@@ -533,12 +539,14 @@ const getAllServices = async (req, res) => {
       );
       const latestSubmission = sortedSubmissions[0];
 
-      const sortedStatuses = [...(latestSubmission?.submissionsStatus || [])].sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
+      const sortedStatuses = [
+        ...(latestSubmission?.submissionsStatus || []),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       const currentStatus = sortedStatuses[0]?.status || null;
 
-      const submissionJson = latestSubmission ? latestSubmission.toJSON() : null;
+      const submissionJson = latestSubmission
+        ? latestSubmission.toJSON()
+        : null;
       if (submissionJson) delete submissionJson.submissionsStatus;
 
       const actions = getAllowedActions(
@@ -570,10 +578,11 @@ const getAllServices = async (req, res) => {
   }
 };
 
-
 const submitUserAction = async (req, res) => {
   const userName = req.user.userName;
-  const { serviceId, action, comment, userRole, userType } = req.body;
+  const userRole = req.user.role;
+  const userType = req.user.type;
+  const { serviceId, action, comment } = req.body;
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
@@ -642,12 +651,17 @@ const submitUserAction = async (req, res) => {
     }
 
     const actions = getAllowedActions(
-      userName, 
+      userName,
       userType,
       userRole,
       lastSubmission.phaseKey,
       lastSubmission.currentStatus
     );
+
+    console.log("userType:", userType);
+    console.log("userRole:", userRole);
+    console.log("Last Submission:", lastSubmission);
+    console.log("Actions:", actions);
 
     if (!actions.includes(action)) {
       return res.json(
@@ -655,34 +669,35 @@ const submitUserAction = async (req, res) => {
       );
     }
 
-    switch (action) {
-      case "define.submit":
-        return await submitPhase(
-          res,
-          lastSubmission.dguid,
-          lastSubmission.currentStatus,
-          comment
-        );
-      case "define.approve":
-        return await approvePhase(
-          res,
-          lastSubmission.dguid,
-          lastSubmission.currentStatus,
-          action,
-          comment
-        );
-      case "define.reject":
-        return await rejectPhase(
-          res,
-          lastSubmission.dguid,
-          lastSubmission.currentStatus,
-          action,
-          comment
-        );
-        //complete the rest cases
-      default:
-        return res.json(errorResponse("Invalid action", 400));
+    if (action.includes("submit")) {
+      return await submitPhase(
+        res,
+        lastSubmission.dguid,
+        lastSubmission.currentStatus,
+        comment
+      );
     }
+    if (action.includes("approve")) {
+      return await approvePhase(
+        req,
+        res,
+        lastSubmission.dguid,
+        lastSubmission.currentStatus,
+        action,
+        comment
+      );
+    }
+    if (action.includes("reject")) {
+      return await rejectPhase(
+        req,
+        res,
+        lastSubmission.dguid,
+        lastSubmission.currentStatus,
+        action,
+        comment
+      );
+    }
+    return res.json(errorResponse("Invalid action", 400));
   } catch (error) {
     console.error("approveStep error:", error);
     return res.status(500).json(errorResponse("Internal server error", 500));
@@ -690,10 +705,15 @@ const submitUserAction = async (req, res) => {
 };
 
 const submitPhase = async (res, submissionId, currentStatus, comment) => {
-  if (currentStatus !== SubmissionStatus.DRAFT) {
+  if (
+    currentStatus !== SubmissionStatus.DRAFT ||
+    currentStatus !== SubmissionStatus.REJECTED ||
+    currentStatus !== SubmissionStatus.BUSINESS_REJECTED ||
+    currentStatus !== SubmissionStatus.TECHNICAL_REJECTED
+  ) {
     return res.json(
       errorResponse(
-        "Submission must be in DRAFT status before it can be SUBMITTED",
+        "Submission can't be SUBMITTED",
         400
       )
     );
@@ -719,31 +739,83 @@ const submitPhase = async (res, submissionId, currentStatus, comment) => {
 };
 
 const approvePhase = async (
+  req,
   res,
   submissionId,
   currentStatus,
   action,
   comment
 ) => {
-  if (currentStatus !== SubmissionStatus.SUBMITTED) {
-    return res.json(
-      errorResponse(
-        "Submission must be in SUBMIT status before it can be APPROVED",
-        400
-      )
-    );
-  }
+  const userRole = req.user.role;
+  const userType = req.user.type;
 
   const t = await Services.sequelize.transaction();
   try {
-    await SubmissionsStatus.create(
-      {
-        submissionId,
-        status: "APPROVED",
-        comment: comment,
-      },
-      { transaction: t }
-    );
+    if (action === "develop.approve") {
+      if (userType !== "dda") {
+        return res.json(
+          errorResponse("Only DDA can approve in this phase", 403)
+        );
+      } else {
+        if (userRole !== "business") {
+          if (currentStatus !== SubmissionStatus.SUBMITTED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in Submit status before it can be APPROVED",
+                400
+              )
+            );
+          }
+
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.BUSINESS_APPROVED,
+              comment: comment,
+            },
+            { transaction: t }
+          );
+        }
+
+        if (userRole !== "technical") {
+          if (currentStatus !== SubmissionStatus.BUSINESS_APPROVED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in Approve status before it can be APPROVED from Business",
+                400
+              )
+            );
+          }
+
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.TECHNICAL_APPROVED,
+              comment: comment,
+            },
+            { transaction: t }
+          );
+        }
+      }
+    } else {
+      if (currentStatus !== SubmissionStatus.SUBMITTED) {
+        return res.json(
+          errorResponse(
+            "Submission must be in SUBMIT status before it can be APPROVED",
+            400
+          )
+        );
+      }
+
+      await SubmissionsStatus.create(
+        {
+          submissionId,
+          status: SubmissionStatus.APPROVED,
+          comment: comment,
+        },
+        { transaction: t }
+      );
+    }
 
     await t.commit();
     return res.json(successResponse(true));
@@ -754,32 +826,83 @@ const approvePhase = async (
 };
 
 const rejectPhase = async (
+  req,
   res,
   submissionId,
   currentStatus,
   action,
   comment
 ) => {
-  if (currentStatus !== SubmissionStatus.SUBMITTED) {
-    return res.json(
-      errorResponse(
-        "Submission must be in SUBMIT status before it can be REJECTED",
-        400
-      )
-    );
-  }
+  const userRole = req.user.role;
+  const userType = req.user.type;
 
   const t = await Services.sequelize.transaction();
   try {
-    await SubmissionsStatus.create(
-      {
-        submissionId,
-        status: "REJECTED",
-        comment: comment,
-      },
-      { transaction: t }
-    );
+    if (action === "develop.reject") {
+      if (userType !== "dda") {
+        return res.json(
+          errorResponse("Only DDA can approve in this phase", 403)
+        );
+      } else {
+        if (userRole !== "business") {
+          if (currentStatus !== SubmissionStatus.SUBMITTED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in Submit status before it can be REJECTED",
+                400
+              )
+            );
+          }
 
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.BUSINESS_REJECTED,
+              comment: comment,
+            },
+            { transaction: t }
+          );
+        }
+
+        if (userRole !== "technical") {
+          if (currentStatus !== SubmissionStatus.BUSINESS_APPROVED) {
+            return res.json(
+              errorResponse(
+                "Submission must be in Reject status before it can be APPROVED from Business",
+                400
+              )
+            );
+          }
+
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.TECHNICAL_REJECTED,
+              comment: comment,
+            },
+            { transaction: t }
+          );
+        }
+      }
+    } else {
+      if (currentStatus !== SubmissionStatus.SUBMITTED) {
+        return res.json(
+          errorResponse(
+            "Submission must be in SUBMIT status before it can be REJECTED",
+            400
+          )
+        );
+      }
+
+      await SubmissionsStatus.create(
+        {
+          submissionId,
+          status: SubmissionStatus.REJECTED,
+          comment: comment,
+        },
+        { transaction: t }
+      );
+    }
     await t.commit();
     return res.json(successResponse(true));
   } catch (error) {
