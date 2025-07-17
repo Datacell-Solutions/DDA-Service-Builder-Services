@@ -1,54 +1,46 @@
-// controllers/pageController.js
-const { AppError } = require("../../utils/errorHandler.js");
-const Clients = require("../models/client.js");
-const Sessions = require("../models/sessions.js");
+const axios = require("axios");
 const {
-  signJwt,
-  encryptText,
-} = require("../../utils/security.js");
+  successResponse,
+  errorResponse,
+} = require("../../utils/responseHandler");
 
-const generateGuid = require("../../utils/guid.js");
-
-// Generate a Token for the Client ID
 const getClientToken = async (req, res, next) => {
+  const clientId = process.env.ADMIN_API_CLIENT_ID;
+  const clientSecret = process.env.ADMIN_API_CLIENT_SECRET;
+  const { username, password } = req.body;
+
   try {
-    const { client_id, client_secret, scope } = req.body;
-    console.log({ client_id });
-    const currentClient = await Clients.findOne({
-      where: { clientId: client_id, clientSecret: client_secret, isActive: 1 },
-    });
+    const response = await axios.post(
+      "http://94.250.202.7:6661/Auth/client/user/login",
+      {
+        username,
+        password,
+      },
+      {
+        headers: {
+          ClientId: clientId,
+          ClientSecret: clientSecret,
+        },
+      }
+    );
 
-    if (!currentClient) {
-      return next(new AppError("Invalid Client", 404));
-    }
+    const data = response.data?.Data;
+    if (!data) throw new Error("Invalid response format");
 
-    const sessionId = generateGuid();
-
-    const Session = Sessions.create({
-      dguid: sessionId,
-      clientId: currentClient.clientId,
-      clientScope: currentClient.clientScope,
-      createDate: new Date(),
-    });
-
-    const jwtPayload = {
-      client: currentClient.clientId,
-      scope: currentClient.scope,
-      session: sessionId,
+    const result = {
+      token: data.token,
+      fullName: data.user.fullName,
+      type: data.user.type,
+      role: data.user.role,
+      entity: data.user.entity,
+      logo: data.entity.logo,
     };
 
-    const jwtToken = signJwt(jwtPayload);
-    console.log({ jwtToken });
-    const encryptedToken = encryptText(jwtToken);
-
-    res.status(200).json({
-      message: "Success",
-      accessToken: encryptedToken,
-      // jwtToken
-    });
+    return res.json(successResponse(result));
+   
   } catch (error) {
-    console.error("Error fetching client:", error);
-    next(new AppError("Failed to fetch client", 500));
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
   }
 };
 

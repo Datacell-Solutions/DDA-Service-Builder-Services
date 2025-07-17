@@ -688,7 +688,7 @@ const submitUserAction = async (req, res) => {
           action,
           comment
         );
-        
+        //complete the rest cases
       default:
         return res.json(errorResponse("Invalid action", 400));
     }
