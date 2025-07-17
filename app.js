@@ -6,6 +6,7 @@ const router = require("./services/routes");
 const authRoutes = require("./services/authRoutes");
 const path = require("path");
 const { exchangeToken } = require("./middlewares/checkPrivilege");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use("/attachments", express.static(path.join(__dirname, "attachments")));
 dotenv.config();
 const port = process.env.PORT;
 
+app.use(cookieParser());
 app.use(express.json());
 // app.use(httpLogger);
 
