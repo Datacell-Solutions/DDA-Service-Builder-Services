@@ -3,7 +3,9 @@ const dotenv = require("dotenv");
 const sequelize = require("./config/database");
 const { attempSynchronization } = require("./utils/initDatabase");
 const router = require("./services/routes");
+const authRoutes = require("./services/authRoutes");
 const path = require("path");
+const { exchangeToken } = require("./middlewares/checkPrivilege");
 
 const app = express();
 
@@ -15,7 +17,8 @@ const port = process.env.PORT;
 app.use(express.json());
 // app.use(httpLogger);
 
-app.use("/api", router);
+app.use("/api/Client", authRoutes);
+app.use("/api/service", exchangeToken(), router);
 app.get("/initialize-database", attempSynchronization);
 
 const startServer = async () => {

@@ -236,6 +236,7 @@ const addService = async (req, res) => {
             titleAr: fee.titleAr,
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
+            amount: fee.amount,
           },
           { transaction: t }
         );

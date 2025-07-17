@@ -41,7 +41,7 @@ const ServiceFees = sequelize.define(
       type: DataTypes.STRING(1024),
       allowNull: false,
     },
-    descriptionAr: {
+    amount: {
       type: DataTypes.STRING(255),
       allowNull: false,
     },

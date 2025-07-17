@@ -11,7 +11,7 @@ const getClientToken = async (req, res, next) => {
 
   try {
     const response = await axios.post(
-      "http://94.250.202.7:6661/Auth/client/user/login",
+      `${process.env.ADMIN_API_URL}/Auth/client/user/login`,
       {
         username,
         password,
@@ -24,20 +24,25 @@ const getClientToken = async (req, res, next) => {
       }
     );
 
-    const data = response.data?.Data;
-    if (!data) throw new Error("Invalid response format");
+    const responseData = response.data;
+    if (!responseData) throw new Error("Invalid response format");
 
-    const result = {
-      token: data.token,
-      fullName: data.user.fullName,
-      type: data.user.type,
-      role: data.user.role,
-      entity: data.user.entity,
-      logo: data.entity.logo,
-    };
+    const data = responseData.Data;
 
-    return res.json(successResponse(result));
-   
+    if (responseData.Status === 200) {
+      const result = {
+        token: data.token,
+        fullName: data.user.fullName,
+        type: data.user.type,
+        role: data.user.role,
+        entity: data.user.entity,
+        logo: data.entity.logo,
+      };
+
+      return res.json(successResponse(result));
+    } else {
+      return res.json(errorResponse(responseData.Error, 401));
+    }
   } catch (error) {
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
