@@ -971,6 +971,33 @@ const getEntities = async (req, res) => {
   }
 }
 
+const getPhase = async (req, res) => {
+  try {
+    const phases = [
+      {
+        name: "Define",
+        key: process.env.DEFINE_PHASE_KEY,
+      },
+      {
+        name: "Envisioning",
+        key: process.env.ENVISIONING_PHASE_KEY,
+      },
+      {
+        name: "Design",
+        key: process.env.DESIGN_PHASE_KEY,
+      },
+      {
+        name: "Development",
+        key: process.env.DEVELOPMENT_PHASE_KEY,
+      },
+    ]
+    return res.json(successResponse(phases));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+}
+
 const getSubmissionDetails = async (req, res) => {
   const { submissionId } = req.params;
   try {
@@ -1025,5 +1052,6 @@ module.exports = {
   getSubmissionDetails,
   addTestCases,
   getEntities,
+  getPhase,
   upload,
 };
