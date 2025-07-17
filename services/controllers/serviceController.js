@@ -705,10 +705,11 @@ const submitUserAction = async (req, res) => {
 };
 
 const submitPhase = async (res, submissionId, currentStatus, comment) => {
+  console.log("Submitting phase:", submissionId, currentStatus, comment);
   if (
-    currentStatus !== SubmissionStatus.DRAFT ||
-    currentStatus !== SubmissionStatus.REJECTED ||
-    currentStatus !== SubmissionStatus.BUSINESS_REJECTED ||
+    currentStatus !== SubmissionStatus.DRAFT &&
+    currentStatus !== SubmissionStatus.REJECTED &&
+    currentStatus !== SubmissionStatus.BUSINESS_REJECTED &&
     currentStatus !== SubmissionStatus.TECHNICAL_REJECTED
   ) {
     return res.json(
