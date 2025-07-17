@@ -5,11 +5,22 @@ function exchangeToken() {
   return async (req, res, next) => {
     const clientId = process.env.ADMIN_API_CLIENT_ID;
     const clientSecret = process.env.ADMIN_API_CLIENT_SECRET;
-    const authHeader = req.headers["authorization"];
+    var authHeader = null;
+    authHeader = req.headers["authorization"] || null;
+
+    console.log({ authHeader });
+    if (!authHeader) {
+      authHeader = req.cookies.Session_Auth || null;
+      if (!!authHeader) {
+        authHeader = "Bearer " + authHeader;
+      }
+    }
+    console.log({ authHeader });
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res
-        .json(errorResponse("Valid authorization token is required", 401));
+      return res.json(
+        errorResponse("Valid authorization token is required", 401)
+      );
     }
 
     const token = authHeader.split(" ")[1];
@@ -30,8 +41,9 @@ function exchangeToken() {
       const responseData = response.data;
 
       if (response.status !== 200 || responseData?.Status !== 200) {
-        return res
-          .json(errorResponse(responseData?.Error || "Failed to exchange token", 401));
+        return res.json(
+          errorResponse(responseData?.Error || "Failed to exchange token", 401)
+        );
       }
 
       req.user = responseData.Data.user;
@@ -40,7 +52,7 @@ function exchangeToken() {
       } else if (responseData.Data.user.type === "dda") {
         req.entities = responseData.Data.entity;
       }
-      
+
       next();
     } catch (error) {
       if (error.response) {
@@ -56,6 +68,5 @@ function exchangeToken() {
     }
   };
 }
-
 
 module.exports = { exchangeToken };
