@@ -9,6 +9,7 @@ const Submissions = require("./Submissions.js");
 const SubmissionsStatus = require("./SubmissionsStatus.js");
 const ServiceEnvisioning = require("./ServiceEnvisioning.js");
 const ServiceFlows = require("./ServiceFlows.js");
+const ServiceDesigns = require("./ServiceDesigns.js");
 
 Services.hasMany(ServiceDocuments, {
   foreignKey: "serviceId",
@@ -87,6 +88,17 @@ ServiceFlows.belongsTo(Services, {
   targetKey: "dguid",
 });
 
+Services.hasMany(ServiceDesigns, {
+  foreignKey: "serviceId",
+  sourceKey: "dguid",
+  as: "serviceDesigns",
+});
+ServiceDesigns.belongsTo(Services, {
+  foreignKey: "serviceId",
+  as: "service",
+  targetKey: "dguid",
+});
+
 module.exports = {
   Clients,
   DSessions,
@@ -97,5 +109,6 @@ module.exports = {
   Submissions,
   SubmissionsStatus,
   ServiceEnvisioning,
-  ServiceFlows
+  ServiceFlows,
+  ServiceDesigns
 };

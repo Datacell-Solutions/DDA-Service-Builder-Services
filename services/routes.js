@@ -3,6 +3,7 @@ const router = express.Router();
 
 const ServiceEnvisioning = require("./controllers/serviceEnvisioningController");
 const Service = require("./controllers/serviceController");
+const ServiceDesign = require("./controllers/serviceDesignController");
 
 // Template Routes
 router.post("/add", Service.addService);
@@ -34,6 +35,10 @@ router.post(
   ServiceEnvisioning.updateEnvisioning
 );
 router.get("/getEnvisioning/:serviceId", ServiceEnvisioning.getEnvisioning);
+
+router.post("/addServiceDesign", ServiceDesign.addServiceDesign);
+router.post("/updateServiceDesign", ServiceDesign.updateServiceDesign);
+router.get("/getServiceDesign/:serviceId", ServiceDesign.getServiceDesign);
 
 router.get("/getEntities", Service.getEntities);
 router.get("/getPhase", Service.getPhase);
