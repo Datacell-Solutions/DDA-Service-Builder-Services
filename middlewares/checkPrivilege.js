@@ -8,14 +8,12 @@ function exchangeToken() {
     var authHeader = null;
     authHeader = req.headers["authorization"] || null;
 
-    console.log({ authHeader });
     if (!authHeader) {
       authHeader = req.cookies.Session_Auth || null;
       if (!!authHeader) {
         authHeader = "Bearer " + authHeader;
       }
     }
-    console.log({ authHeader });
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.json(
