@@ -10,7 +10,10 @@ const {
   errorResponse,
 } = require("../../utils/responseHandler");
 const { Op } = require("sequelize");
-const { SubmissionStatus, getAllowedActions } = require("../../utils/actionMatrixHandler");
+const {
+  SubmissionStatus,
+  getAllowedActions,
+} = require("../../utils/actionMatrixHandler");
 
 //Add createdBy and updatedBy fields
 //check service owner
@@ -265,8 +268,8 @@ const getService = async (req, res) => {
           model: ServiceFees,
           as: "fees",
           required: false,
-        }
-      ]
+        },
+      ],
     });
 
     if (!service) {
@@ -280,10 +283,10 @@ const getService = async (req, res) => {
           model: SubmissionsStatus,
           as: "submissionsStatus",
           required: false,
-          attributes: ["dguid", "status", "comment", "createdAt"]
-        }
+          attributes: ["dguid", "status", "comment", "createdAt"],
+        },
       ],
-      order: [["createdAt", "DESC"]]
+      order: [["createdAt", "DESC"]],
     });
 
     const transformedSubmissions = submissions.map((submission) => {
@@ -359,7 +362,6 @@ const getAllServices = async (req, res) => {
           as: "submissionsStatus",
           required: false,
           attributes: ["dguid", "status", "comment", "createdAt"],
-          order: [["createdAt", "DESC"]],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -375,28 +377,56 @@ const getAllServices = async (req, res) => {
       const serviceSubs = submissionsByService[service.dguid] || [];
       if (serviceSubs.length === 0) return false;
 
-      const sortedSubs = serviceSubs.sort(
+      const sortedSubs = [...serviceSubs].sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
       );
-      const latestSubmission = sortedSubs[0];
 
-      const sortedStatuses = [...(latestSubmission.submissionsStatus || [])].sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
-      const latestStatus = sortedStatuses[0]?.status;
+      if (userType !== "entity") {
+        const defineSubmission = sortedSubs.find(
+          (sub) => sub.phaseKey === "DEFINE"
+        );
+
+        if (defineSubmission) {
+          const sortedDefineStatuses = [
+            ...(defineSubmission.submissionsStatus || []),
+          ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          const latestDefineStatus = sortedDefineStatuses[0]?.status;
+
+          if (latestDefineStatus === "draft") {
+            return false;
+          }
+        }
+      }
 
       if (userRole === "technical") {
+        const latestSubmission = sortedSubs[0];
+        const latestStatuses = [
+          ...(latestSubmission.submissionsStatus || []),
+        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        const latestStatus = latestStatuses[0]?.status;
         return latestStatus === "develop";
       }
+
       return true;
     });
 
     const transformedServices = filteredServices.map((service) => {
       const serviceSubs = submissionsByService[service.dguid] || [];
 
-      const sortedSubs = serviceSubs.sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
+      const sortedSubs = [...serviceSubs]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .filter((sub) => {
+          if (userType === "entity") return true;
+
+          const statuses = sub.submissionsStatus || [];
+          const sortedStatuses = statuses.sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+          );
+          const latestStatus = sortedStatuses[0]?.status?.toLowerCase();
+
+          // Filter out submission if latest status is draft and userType is not "entity"
+          return latestStatus !== "draft";
+        });
 
       const groupedSubs = {};
       for (const submission of sortedSubs) {
@@ -443,7 +473,6 @@ const getAllServices = async (req, res) => {
     return res.json(errorResponse("Internal server error", 500));
   }
 };
-
 
 const submitUserAction = async (req, res) => {
   const userName = req.user.userName;
@@ -574,12 +603,7 @@ const submitPhase = async (req, res, submissionId, currentStatus, comment) => {
     currentStatus !== SubmissionStatus.BUSINESS_REJECTED &&
     currentStatus !== SubmissionStatus.TECHNICAL_REJECTED
   ) {
-    return res.json(
-      errorResponse(
-        "Submission can't be SUBMITTED",
-        400
-      )
-    );
+    return res.json(errorResponse("Submission can't be SUBMITTED", 400));
   }
 
   const t = await Services.sequelize.transaction();
@@ -801,7 +825,7 @@ const getEntities = async (req, res) => {
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
-}
+};
 
 const getPhase = async (req, res) => {
   try {
@@ -822,13 +846,13 @@ const getPhase = async (req, res) => {
         name: "Development",
         key: process.env.DEVELOPMENT_PHASE_KEY,
       },
-    ]
+    ];
     return res.json(successResponse(phases));
   } catch (error) {
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
-}
+};
 
 const getSubmissionDetails = async (req, res) => {
   const { submissionId } = req.params;
