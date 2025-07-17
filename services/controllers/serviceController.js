@@ -13,6 +13,7 @@ const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 const multer = require("multer");
 const fs = require("fs");
+const { Op } = require('sequelize');
 
 const folder = "attachments";
 const storage = multer.diskStorage({
@@ -156,7 +157,7 @@ const actionsMatrix = {
   },
 };
 
-function getAllowedActions(userType, userRole, phase, currentStatus) {
+function getAllowedActions(userName, userType, userRole, phase, currentStatus) {
   const fullRole = `${userType} ${userRole}`;
   const phaseData = actionsMatrix[phase];
   if (!phaseData) return [];
@@ -170,8 +171,6 @@ function getAllowedActions(userType, userRole, phase, currentStatus) {
 //Add createdBy and updatedBy fields
 //check service owner
 const addService = async (req, res) => {
-  //Change this to read from the token
-  const entityId = uuidv4();
   const {
     nameEn,
     nameAr,
@@ -189,7 +188,10 @@ const addService = async (req, res) => {
     documents,
     fees,
   } = req.body;
-
+  const userName = req.user.userName;
+  const entityId = req.entity.guid;
+  const userRole = req.user.role;
+  const userType = req.user.type;
   const t = await Services.sequelize.transaction();
   try {
     const newService = await Services.create(
@@ -208,6 +210,7 @@ const addService = async (req, res) => {
         ServiceChannelApply,
         ServiceChannelDeliver,
         ServiceChannelPay,
+        userName,
       },
       { transaction: t }
     );
@@ -259,8 +262,18 @@ const addService = async (req, res) => {
       { transaction: t }
     );
 
+    const actions = getAllowedActions(
+      userName,
+      userType,
+      userRole,
+      process.env.DEFINE_PHASE_KEY,
+      SubmissionStatus.DRAFT
+    );
     await t.commit();
-    return res.json(successResponse(newService.dguid));
+    return res.json(successResponse({
+      serviceId: newService.dguid,
+      actions,
+    }));
   } catch (error) {
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
@@ -268,6 +281,7 @@ const addService = async (req, res) => {
 };
 
 const updateService = async (req, res) => {
+  const userName = req.user.userName;
   const { serviceId } = req.params;
   const {
     submissionId,
@@ -315,6 +329,7 @@ const updateService = async (req, res) => {
         ServiceChannelDeliver,
         ServiceChannelPay,
         updatedAt: new Date(),
+        updatedBy: userName,
       },
       { transaction: t }
     );
@@ -379,9 +394,10 @@ const updateService = async (req, res) => {
 
 const getService = async (req, res) => {
   const { serviceId } = req.params;
-  const userRole = req.headers["userrole"];
-  const userType = req.headers["usertype"];
-  console.log("headers:", req.headers);
+  const userRole = req.user.role;
+  const userType = req.user.type;
+  const userName = req.user.userName;
+
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
@@ -434,14 +450,8 @@ const getService = async (req, res) => {
 
     const currentSubmission = transformedSubmissions[0];
 
-    console.log("Current Submission:", {
-      userType,
-      userRole,
-      phaseKey: currentSubmission.phaseKey,
-      currentStatus: currentSubmission.currentStatus,
-    });
-
     const actions = getAllowedActions(
+      userName,
       userType,
       userRole,
       currentSubmission.phaseKey,
@@ -462,22 +472,27 @@ const getService = async (req, res) => {
 };
 
 const getAllServices = async (req, res) => {
-  const userRole = req.headers["userrole"];
-  const userType = req.headers["usertype"];
+  const userRole = req.user.role;
+  const userType = req.user.type;
+  const userName = req.user.userName;
+  const entity = req.entity;
+  const entities = req.entities;
+
   try {
+    const whereClause = {};
+
+    // Filter by entity/entities
+    if (userType === "entity") {
+      whereClause.entityId = entity.guid;
+    } else if (userType === "dda") {
+      const entityIds = entities.map((e) => e.guid);
+      whereClause.entityId = { [Op.in]: entityIds };
+    }
+
     const services = await Services.findAll({
-      attributes: { include: ["id"] },
+      where: whereClause,
+      attributes: ["id", "dguid", "nameEn", "nameAr"],
       include: [
-        {
-          model: ServiceDocuments,
-          as: "documents",
-          required: true,
-        },
-        {
-          model: ServiceFees,
-          as: "fees",
-          required: true,
-        },
         {
           model: Submissions,
           as: "submissions",
@@ -491,42 +506,59 @@ const getAllServices = async (req, res) => {
           ],
         },
       ],
-      order: [
-        [
-          { model: Submissions, as: "submissions" },
-          { model: SubmissionsStatus, as: "submissionsStatus" },
-          "createdAt",
-          "DESC",
-        ],
-      ],
     });
 
-    const transformedServices = services.map((service) => {
-      const submissions =
-        service.submissions?.map((submission) => {
-          const submissionJson = submission.toJSON();
-          const statuses = submissionJson.submissionsStatus || [];
-          const currentStatus = statuses.length > 0 ? statuses[0].status : null;
+    // Step 2: Filter and get latest submission + status
+    const filteredServices = services.filter((service) => {
+      const sortedSubmissions = [...(service.submissions || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      const latestSubmission = sortedSubmissions[0];
 
-          delete submissionJson.submissionsStatus;
+      const sortedStatuses = [...(latestSubmission?.submissionsStatus || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      const latestStatus = sortedStatuses[0]?.status;
 
-          return {
-            ...submissionJson,
-            currentStatus,
-          };
-        }) || [];
+      if (userRole === "technical") {
+        return latestStatus === "develop";
+      }
+      return true;
+    });
 
-      const currentSubmission = submissions[0];
+    // Step 3: Transform result
+    const transformedServices = filteredServices.map((service) => {
+      const sortedSubmissions = [...(service.submissions || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      const latestSubmission = sortedSubmissions[0];
+
+      const sortedStatuses = [...(latestSubmission?.submissionsStatus || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      const currentStatus = sortedStatuses[0]?.status || null;
+
+      const submissionJson = latestSubmission ? latestSubmission.toJSON() : null;
+      if (submissionJson) delete submissionJson.submissionsStatus;
+
       const actions = getAllowedActions(
+        userName,
         userType,
         userRole,
-        currentSubmission.phaseKey,
-        currentSubmission.currentStatus
+        submissionJson?.phaseKey,
+        currentStatus
       );
 
       return {
         ...service.toJSON(),
-        submissions,
+        submissions: latestSubmission
+          ? [
+              {
+                ...submissionJson,
+                currentStatus,
+              },
+            ]
+          : [],
         actions,
       };
     });
@@ -538,52 +570,9 @@ const getAllServices = async (req, res) => {
   }
 };
 
-const getSubmissionDetails = async (req, res) => {
-  const { submissionId } = req.params;
-  try {
-    const submission = await Submissions.findOne({
-      where: { dguid: submissionId },
-      include: [
-        {
-          model: Services,
-          as: "service",
-        },
-        {
-          model: SubmissionsStatus,
-          as: "submissionsStatus",
-          attributes: ["dguid", "status", "comment", "createdAt"],
-        },
-      ],
-      order: [
-        [
-          { model: SubmissionsStatus, as: "submissionsStatus" },
-          "createdAt",
-          "DESC",
-        ],
-      ],
-    });
-
-    if (!submission) {
-      return res.json(errorResponse("Submission not found", 404));
-    }
-
-    const statusHistory = submission.submissionsStatus || [];
-    const currentStatus = statusHistory[0] || null;
-
-    return res.json({
-      id: submission.dguid,
-      dguid: submission.dguid,
-      service: submission.service,
-      currentStatus: currentStatus.status,
-      submissionsStatus: statusHistory,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.json(errorResponse("Internal server error", 500));
-  }
-};
 
 const submitUserAction = async (req, res) => {
+  const userName = req.user.userName;
   const { serviceId, action, comment, userRole, userType } = req.body;
   try {
     const service = await Services.findOne({
@@ -653,6 +642,7 @@ const submitUserAction = async (req, res) => {
     }
 
     const actions = getAllowedActions(
+      userName, 
       userType,
       userRole,
       lastSubmission.phaseKey,
@@ -835,6 +825,51 @@ const addTestCases = async (req, res) => {
     return res
       .status(500)
       .json({ code: 500, message: "Internal server error" });
+  }
+};
+
+const getSubmissionDetails = async (req, res) => {
+  const { submissionId } = req.params;
+  try {
+    const submission = await Submissions.findOne({
+      where: { dguid: submissionId },
+      include: [
+        {
+          model: Services,
+          as: "service",
+        },
+        {
+          model: SubmissionsStatus,
+          as: "submissionsStatus",
+          attributes: ["dguid", "status", "comment", "createdAt"],
+        },
+      ],
+      order: [
+        [
+          { model: SubmissionsStatus, as: "submissionsStatus" },
+          "createdAt",
+          "DESC",
+        ],
+      ],
+    });
+
+    if (!submission) {
+      return res.json(errorResponse("Submission not found", 404));
+    }
+
+    const statusHistory = submission.submissionsStatus || [];
+    const currentStatus = statusHistory[0] || null;
+
+    return res.json({
+      id: submission.dguid,
+      dguid: submission.dguid,
+      service: submission.service,
+      currentStatus: currentStatus.status,
+      submissionsStatus: statusHistory,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.json(errorResponse("Internal server error", 500));
   }
 };
 

@@ -35,7 +35,12 @@ function exchangeToken() {
       }
 
       req.user = responseData.Data.user;
-      req.entity = responseData.Data.entity;
+      if (responseData.Data.user.type === "entity") {
+        req.entity = responseData.Data.entity;
+      } else if (responseData.Data.user.type === "dda") {
+        req.entities = responseData.Data.entity;
+      }
+      
       next();
     } catch (error) {
       if (error.response) {

@@ -6,5 +6,5 @@ const router = express.Router();
 const Clients = require('./controllers/userController');
 
 // Template Routes
-router.post('/Login', Clients.getClientToken);
+router.post('/login', Clients.getClientToken);
 module.exports = router;

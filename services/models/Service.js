@@ -19,7 +19,6 @@ const Services = sequelize.define(
     },
     entityId: {
       type: DataTypes.STRING(100),
-      unique: true,
       allowNull: false,
     },
     nameEn: {

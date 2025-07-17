@@ -17,7 +17,7 @@ const port = process.env.PORT;
 app.use(express.json());
 // app.use(httpLogger);
 
-app.use("/api/Client", authRoutes);
+app.use("/api/client", authRoutes);
 app.use("/api/service", exchangeToken(), router);
 app.get("/initialize-database", attempSynchronization);
 
