@@ -17,4 +17,5 @@ router.get('/get/:serviceId', Service.getService);
 router.post('/submitUserAction', Service.submitUserAction);
 router.get('/getSubmissionDetails/:submissionId', Service.getSubmissionDetails);
 router.post("/addTestCases", Service.upload.single("file"), Service.addTestCases);
+router.get('/getEntities', Service.getEntities);
 module.exports = router;

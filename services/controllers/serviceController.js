@@ -127,12 +127,12 @@ const actionsMatrix = {
 
   [process.env.DEVELOPMENT_PHASE_KEY]: {
     "entity business": {
-      DRAFT: [],
+      DRAFT: ["develop.submit"],
       SUBMITTED: [],
       BUSINESS_APPROVED: [],
-      BUSINESS_REJECTED: [],
+      BUSINESS_REJECTED: ["develop.submit"],
       TECHNICAL_APPROVED: [],
-      TECHNICAL_REJECTED: [],
+      TECHNICAL_REJECTED: ["develop.submit"],
     },
     "entity technical": {
       DRAFT: ["develop.submit"],
@@ -952,6 +952,25 @@ const addTestCases = async (req, res) => {
   }
 };
 
+const getEntities = async (req, res) => {
+  const userRole = req.user.role;
+  const userType = req.user.type;
+  const entities = req.entities;
+
+  try {
+    if (userType !== "dda" && userRole !== "business") {
+      return res.json(
+        errorResponse("You are not authorized to view entities", 403)
+      );
+    }
+
+    return res.json(successResponse(entities));
+  } catch (error) {
+    console.error(error);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+}
+
 const getSubmissionDetails = async (req, res) => {
   const { submissionId } = req.params;
   try {
@@ -1005,5 +1024,6 @@ module.exports = {
   submitUserAction,
   getSubmissionDetails,
   addTestCases,
+  getEntities,
   upload,
 };
