@@ -3,8 +3,8 @@ const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
 const { v4: uuidv4 } = require("uuid");
 
-const Services = sequelize.define(
-  "Services",
+const ServiceEnvisioning = sequelize.define(
+  "ServiceEnvisioning",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -17,61 +17,30 @@ const Services = sequelize.define(
       allowNull: false,
       defaultValue: uuidv4,
     },
-    entityId: {
+    serviceId: {
       type: DataTypes.STRING(100),
       allowNull: false,
+      unique: true,
+      references: {
+        model: 'Services',
+        key: 'dguid',
+      },
     },
-    nameEn: {
+    testCase: {
       type: DataTypes.STRING(255),
-      allowNull: false,
+      allowNull: true,
     },
-    nameAr: {
+    brd: {
       type: DataTypes.STRING(255),
-      allowNull: false,
+      allowNull: true,
     },
-    serviceCode: {
+    apisDocumentation: {
       type: DataTypes.STRING(255),
-      allowNull: false,
+      allowNull: true,
     },
-    DepartmentEn: {
+    apisCollection: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    DepartmentAr: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    SectorEn: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    SectorAr: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    DescriptionEn: {
-      type: DataTypes.STRING(1024),
-      allowNull: false,
-    },
-    DescriptionAr: {
-      type: DataTypes.STRING(1024),
-      allowNull: false,
-    },
-    ServiceFees: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-    },
-    ServiceChannelApply: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    ServiceChannelDeliver: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    ServiceChannelPay: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
+      allowNull: true,
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -92,11 +61,11 @@ const Services = sequelize.define(
     },
   },
   {
-    tableName: "Services",
+    tableName: "ServiceEnvisioning",
     timestamps: false, // Disable timestamps
     defaultScope: {
       attributes: { exclude: ["id", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
     },
   }
 );
-module.exports = Services;
+module.exports = ServiceEnvisioning;

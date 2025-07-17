@@ -9,168 +9,8 @@ const {
   successResponse,
   errorResponse,
 } = require("../../utils/responseHandler");
-const { v4: uuidv4 } = require("uuid");
-const path = require("path");
-const multer = require("multer");
-const fs = require("fs");
 const { Op } = require("sequelize");
-
-const folder = "attachments";
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadPath = path.join(__dirname, "../..", folder);
-    fs.mkdirSync(uploadPath, { recursive: true });
-
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const extension = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${extension}`);
-  },
-});
-
-const upload = multer({ storage: storage });
-
-const SubmissionStatus = Object.freeze({
-  DRAFT: "DRAFT",
-  SUBMITTED: "SUBMITTED",
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
-  TECHNICAL_APPROVED: "TECHNICAL APPROVED",
-  TECHNICAL_REJECTED: "TECHNICAL REJECTED",
-  BUSINESS_APPROVED: "BUSINESS APPROVED",
-  BUSINESS_REJECTED: "BUSINESS REJECTED",
-});
-
-const actionsMatrix = {
-  [process.env.DEFINE_PHASE_KEY]: {
-    "entity business": {
-      DRAFT: ["define.submit"],
-      SUBMITTED: [],
-      APPROVED: ["envisioning.draft"],
-      REJECTED: ["define.submit"],
-    },
-    "entity technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda business": {
-      DRAFT: [],
-      SUBMITTED: ["define.approve", "define.reject"],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-  },
-
-  [process.env.ENVISIONING_PHASE_KEY]: {
-    "entity business": {
-      DRAFT: ["envisioning.submit"],
-      SUBMITTED: [],
-      APPROVED: ["design.draft"],
-      REJECTED: ["envisioning.submit"],
-    },
-    "entity technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda business": {
-      DRAFT: [],
-      SUBMITTED: ["envisioning.approve", "envisioning.reject"],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-  },
-
-  [process.env.DESIGN_PHASE_KEY]: {
-    "entity business": {
-      DRAFT: ["design.submit"],
-      SUBMITTED: [],
-      APPROVED: ["develop.draft"],
-      REJECTED: ["design.submit"],
-    },
-    "entity technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda business": {
-      DRAFT: [],
-      SUBMITTED: ["design.approve", "design.reject"],
-      APPROVED: [],
-      REJECTED: [],
-    },
-    "dda technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      APPROVED: [],
-      REJECTED: [],
-    },
-  },
-
-  [process.env.DEVELOPMENT_PHASE_KEY]: {
-    "entity business": {
-      DRAFT: ["develop.submit"],
-      SUBMITTED: [],
-      BUSINESS_APPROVED: [],
-      BUSINESS_REJECTED: ["develop.submit"],
-      TECHNICAL_APPROVED: [],
-      TECHNICAL_REJECTED: ["develop.submit"],
-    },
-    "entity technical": {
-      DRAFT: ["develop.submit"],
-      SUBMITTED: [],
-      BUSINESS_APPROVED: [],
-      BUSINESS_REJECTED: ["develop.submit"],
-      TECHNICAL_APPROVED: [],
-      TECHNICAL_REJECTED: ["develop.submit"],
-    },
-    "dda business": {
-      DRAFT: [],
-      SUBMITTED: ["develop.approve", "develop.reject"],
-      BUSINESS_APPROVED: [],
-      BUSINESS_REJECTED: [],
-      TECHNICAL_APPROVED: [],
-      TECHNICAL_REJECTED: [],
-    },
-    "dda technical": {
-      DRAFT: [],
-      SUBMITTED: [],
-      BUSINESS_APPROVED: ["develop.approve", "develop.reject"],
-      BUSINESS_REJECTED: [],
-      TECHNICAL_APPROVED: [],
-      TECHNICAL_REJECTED: [],
-    },
-  },
-};
-
-function getAllowedActions(userName, userType, userRole, phase, currentStatus) {
-  const fullRole = `${userType} ${userRole}`;
-  const phaseData = actionsMatrix[phase];
-  if (!phaseData) return [];
-
-  const roleData = phaseData[fullRole];
-  if (!roleData) return [];
-
-  return roleData[currentStatus] || [];
-}
+const { SubmissionStatus, getAllowedActions } = require("../../utils/actionMatrixHandler");
 
 //Add createdBy and updatedBy fields
 //check service owner
@@ -214,7 +54,7 @@ const addService = async (req, res) => {
         ServiceChannelApply,
         ServiceChannelDeliver,
         ServiceChannelPay,
-        userName,
+        createdBy: req.user.userName,
       },
       { transaction: t }
     );
@@ -228,6 +68,7 @@ const addService = async (req, res) => {
             serviceId,
             documentNameEn: doc.documentNameEn,
             documentNameAr: doc.documentNameAr,
+            createdBy: req.user.userName,
           },
           { transaction: t }
         );
@@ -244,6 +85,7 @@ const addService = async (req, res) => {
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
             amount: fee.amount,
+            createdBy: req.user.userName,
           },
           { transaction: t }
         );
@@ -254,6 +96,7 @@ const addService = async (req, res) => {
       {
         serviceId: serviceId,
         phaseKey: process.env.DEFINE_PHASE_KEY,
+        createdBy: req.user.userName,
       },
       { transaction: t }
     );
@@ -262,6 +105,7 @@ const addService = async (req, res) => {
       {
         submissionId: newSubmission.dguid,
         status: SubmissionStatus.DRAFT,
+        createdBy: req.user.userName,
       },
       { transaction: t }
     );
@@ -281,6 +125,7 @@ const addService = async (req, res) => {
       })
     );
   } catch (error) {
+    await t.rollback();
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
@@ -315,7 +160,6 @@ const updateService = async (req, res) => {
       attributes: { include: ["id"] },
     });
     if (!service) {
-      await t.rollback();
       return res.json(errorResponse("Service not found", 404));
     }
 
@@ -352,6 +196,7 @@ const updateService = async (req, res) => {
             serviceId: service.dguid,
             documentNameEn: doc.documentNameEn,
             documentNameAr: doc.documentNameAr,
+            createdBy: req.user.userName,
           },
           { transaction: t }
         );
@@ -372,6 +217,7 @@ const updateService = async (req, res) => {
             titleAr: fee.titleAr,
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
+            createdBy: req.user.userName,
           },
           { transaction: t }
         );
@@ -386,6 +232,7 @@ const updateService = async (req, res) => {
       {
         submissionId: submission.dguid,
         status: SubmissionStatus.DRAFT,
+        createdBy: req.user.userName,
       },
       { transaction: t }
     );
@@ -393,6 +240,7 @@ const updateService = async (req, res) => {
     await t.commit();
     return res.json(successResponse(true));
   } catch (error) {
+    await t.rollback();
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
@@ -411,45 +259,46 @@ const getService = async (req, res) => {
         {
           model: ServiceDocuments,
           as: "documents",
-          required: true,
+          required: false,
         },
         {
           model: ServiceFees,
           as: "fees",
-          required: true,
-        },
-        {
-          model: Submissions,
-          as: "submissions",
-          required: true,
-          include: [
-            {
-              model: SubmissionsStatus,
-              as: "submissionsStatus",
-              attributes: ["dguid", "status", "comment", "createdAt"],
-            },
-          ],
-        },
-      ],
-      order: [
-        [
-          { model: Submissions, as: "submissions" },
-          { model: SubmissionsStatus, as: "submissionsStatus" },
-          "createdAt",
-          "DESC",
-        ],
-      ],
+          required: false,
+        }
+      ]
     });
 
     if (!service) {
       return res.json(errorResponse("Service not found", 404));
     }
-    const transformedSubmissions = service.submissions.map((submission) => {
-      const statuses = submission.submissionsStatus || [];
-      const currentStatus = statuses.length > 0 ? statuses[0].status : null;
+
+    const submissions = await Submissions.findAll({
+      where: { serviceId: service.dguid },
+      include: [
+        {
+          model: SubmissionsStatus,
+          as: "submissionsStatus",
+          required: false,
+          attributes: ["dguid", "status", "comment", "createdAt"]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
+
+    const transformedSubmissions = submissions.map((submission) => {
+      const subJson = submission.toJSON();
+
+      const sortedStatuses = (subJson.submissionsStatus || []).sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
+
+      const currentStatus = sortedStatuses[0]?.status || null;
+
+      subJson.submissionsStatus = sortedStatuses;
 
       return {
-        ...submission.toJSON(),
+        ...subJson,
         currentStatus,
       };
     });
@@ -460,13 +309,15 @@ const getService = async (req, res) => {
       userName,
       userType,
       userRole,
-      currentSubmission.phaseKey,
-      currentSubmission.currentStatus
+      currentSubmission?.phaseKey,
+      currentSubmission?.currentStatus
     );
 
     const result = {
-      ...service.toJSON(),
-      submissions: transformedSubmissions,
+      service: {
+        ...service.toJSON(),
+        submissions: transformedSubmissions,
+      },
       actions,
     };
 
@@ -486,8 +337,6 @@ const getAllServices = async (req, res) => {
 
   try {
     const whereClause = {};
-
-    // Filter by entity/entities
     if (userType === "entity") {
       whereClause.entityId = entity.guid;
     } else if (userType === "dda") {
@@ -498,32 +347,42 @@ const getAllServices = async (req, res) => {
     const services = await Services.findAll({
       where: whereClause,
       attributes: ["id", "dguid", "nameEn", "nameAr"],
-      include: [
-        {
-          model: Submissions,
-          as: "submissions",
-          required: true,
-          include: [
-            {
-              model: SubmissionsStatus,
-              as: "submissionsStatus",
-              attributes: ["dguid", "status", "comment", "createdAt"],
-            },
-          ],
-        },
-      ],
     });
 
-    // Step 2: Filter and get latest submission + status
+    const serviceGuids = services.map((s) => s.dguid);
+
+    const submissions = await Submissions.findAll({
+      where: { serviceId: { [Op.in]: serviceGuids } },
+      include: [
+        {
+          model: SubmissionsStatus,
+          as: "submissionsStatus",
+          required: false,
+          attributes: ["dguid", "status", "comment", "createdAt"],
+          order: [["createdAt", "DESC"]],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    const submissionsByService = submissions.reduce((acc, sub) => {
+      if (!acc[sub.serviceId]) acc[sub.serviceId] = [];
+      acc[sub.serviceId].push(sub);
+      return acc;
+    }, {});
+
     const filteredServices = services.filter((service) => {
-      const sortedSubmissions = [...(service.submissions || [])].sort(
+      const serviceSubs = submissionsByService[service.dguid] || [];
+      if (serviceSubs.length === 0) return false;
+
+      const sortedSubs = serviceSubs.sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
       );
-      const latestSubmission = sortedSubmissions[0];
+      const latestSubmission = sortedSubs[0];
 
-      const sortedStatuses = [
-        ...(latestSubmission?.submissionsStatus || []),
-      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const sortedStatuses = [...(latestSubmission.submissionsStatus || [])].sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
       const latestStatus = sortedStatuses[0]?.status;
 
       if (userRole === "technical") {
@@ -532,41 +391,48 @@ const getAllServices = async (req, res) => {
       return true;
     });
 
-    // Step 3: Transform result
     const transformedServices = filteredServices.map((service) => {
-      const sortedSubmissions = [...(service.submissions || [])].sort(
+      const serviceSubs = submissionsByService[service.dguid] || [];
+
+      const sortedSubs = serviceSubs.sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
       );
-      const latestSubmission = sortedSubmissions[0];
 
-      const sortedStatuses = [
-        ...(latestSubmission?.submissionsStatus || []),
-      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const groupedSubs = {};
+      for (const submission of sortedSubs) {
+        const statuses = submission.submissionsStatus || [];
+        const sortedStatuses = statuses.sort(
+          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+        );
+        const currentStatus = sortedStatuses[0]?.status || null;
+
+        const subJson = submission.toJSON();
+        delete subJson.submissionsStatus;
+
+        groupedSubs[submission.phaseKey] = {
+          ...subJson,
+          currentStatus,
+        };
+      }
+
+      const currentSubmission = sortedSubs[0];
+      const currentStatuses = currentSubmission?.submissionsStatus || [];
+      const sortedStatuses = currentStatuses.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
       const currentStatus = sortedStatuses[0]?.status || null;
-
-      const submissionJson = latestSubmission
-        ? latestSubmission.toJSON()
-        : null;
-      if (submissionJson) delete submissionJson.submissionsStatus;
 
       const actions = getAllowedActions(
         userName,
         userType,
         userRole,
-        submissionJson?.phaseKey,
+        currentSubmission?.phaseKey,
         currentStatus
       );
 
       return {
         ...service.toJSON(),
-        submissions: latestSubmission
-          ? [
-              {
-                ...submissionJson,
-                currentStatus,
-              },
-            ]
-          : [],
+        submissions: groupedSubs,
         actions,
       };
     });
@@ -577,6 +443,7 @@ const getAllServices = async (req, res) => {
     return res.json(errorResponse("Internal server error", 500));
   }
 };
+
 
 const submitUserAction = async (req, res) => {
   const userName = req.user.userName;
@@ -629,7 +496,6 @@ const submitUserAction = async (req, res) => {
       const statuses = submissionJson.submissionsStatus || [];
       const currentStatus = statuses.length > 0 ? statuses[0].status : null;
 
-      // Remove submissionsStatus
       delete submissionJson.submissionsStatus;
 
       return {
@@ -658,11 +524,6 @@ const submitUserAction = async (req, res) => {
       lastSubmission.currentStatus
     );
 
-    console.log("userType:", userType);
-    console.log("userRole:", userRole);
-    console.log("Last Submission:", lastSubmission);
-    console.log("Actions:", actions);
-
     if (!actions.includes(action)) {
       return res.json(
         errorResponse("You are not authorized to perform this action", 403)
@@ -671,6 +532,7 @@ const submitUserAction = async (req, res) => {
 
     if (action.includes("submit")) {
       return await submitPhase(
+        req,
         res,
         lastSubmission.dguid,
         lastSubmission.currentStatus,
@@ -704,7 +566,7 @@ const submitUserAction = async (req, res) => {
   }
 };
 
-const submitPhase = async (res, submissionId, currentStatus, comment) => {
+const submitPhase = async (req, res, submissionId, currentStatus, comment) => {
   console.log("Submitting phase:", submissionId, currentStatus, comment);
   if (
     currentStatus !== SubmissionStatus.DRAFT &&
@@ -727,6 +589,7 @@ const submitPhase = async (res, submissionId, currentStatus, comment) => {
         submissionId,
         status: SubmissionStatus.SUBMITTED,
         comment: comment,
+        createdBy: req.user.userName,
       },
       { transaction: t }
     );
@@ -734,6 +597,7 @@ const submitPhase = async (res, submissionId, currentStatus, comment) => {
     await t.commit();
     return res.json(successResponse(true));
   } catch (error) {
+    await t.rollback();
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
@@ -773,6 +637,7 @@ const approvePhase = async (
               submissionId,
               status: SubmissionStatus.BUSINESS_APPROVED,
               comment: comment,
+              createdBy: req.user.userName,
             },
             { transaction: t }
           );
@@ -793,6 +658,7 @@ const approvePhase = async (
               submissionId,
               status: SubmissionStatus.TECHNICAL_APPROVED,
               comment: comment,
+              createdBy: req.user.userName,
             },
             { transaction: t }
           );
@@ -813,6 +679,7 @@ const approvePhase = async (
           submissionId,
           status: SubmissionStatus.APPROVED,
           comment: comment,
+          createdBy: req.user.userName,
         },
         { transaction: t }
       );
@@ -821,6 +688,7 @@ const approvePhase = async (
     await t.commit();
     return res.json(successResponse(true));
   } catch (error) {
+    await t.rollback();
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
@@ -860,6 +728,7 @@ const rejectPhase = async (
               submissionId,
               status: SubmissionStatus.BUSINESS_REJECTED,
               comment: comment,
+              createdBy: req.user.userName,
             },
             { transaction: t }
           );
@@ -880,6 +749,7 @@ const rejectPhase = async (
               submissionId,
               status: SubmissionStatus.TECHNICAL_REJECTED,
               comment: comment,
+              createdBy: req.user.userName,
             },
             { transaction: t }
           );
@@ -900,6 +770,7 @@ const rejectPhase = async (
           submissionId,
           status: SubmissionStatus.REJECTED,
           comment: comment,
+          createdBy: req.user.userName,
         },
         { transaction: t }
       );
@@ -907,48 +778,9 @@ const rejectPhase = async (
     await t.commit();
     return res.json(successResponse(true));
   } catch (error) {
+    await t.rollback();
     console.error(error);
     return res.json(errorResponse("Internal server error", 500));
-  }
-};
-
-const addTestCases = async (req, res) => {
-  const { serviceId } = req.body;
-
-  try {
-    const service = await Services.findOne({
-      where: { dguid: serviceId },
-      attributes: { include: ["id"] },
-    });
-    if (!service) {
-      await t.rollback();
-      return res.json(errorResponse("Service not found", 404));
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ code: 400, message: "No file uploaded" });
-    }
-
-    const oldPath = req.file.path;
-
-    const extension = path.extname(req.file.originalname);
-    const newFilename = `${service.nameEn} Test Cases${extension}`;
-    const newPath = path.join(path.dirname(oldPath), newFilename);
-
-    fs.renameSync(oldPath, newPath);
-
-    const filePath = `/${folder}/${newFilename}`;
-
-    res.status(200).json({
-      code: 201,
-      data: filePath,
-      message: "Success",
-    });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ code: 500, message: "Internal server error" });
   }
 };
 
@@ -1050,8 +882,6 @@ module.exports = {
   getAllServices,
   submitUserAction,
   getSubmissionDetails,
-  addTestCases,
   getEntities,
   getPhase,
-  upload,
 };

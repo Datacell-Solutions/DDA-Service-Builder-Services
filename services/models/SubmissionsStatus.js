@@ -40,7 +40,7 @@ const SubmissionsStatus = sequelize.define(
       defaultValue: Sequelize.NOW,
     },
     createdBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     updatedAt: {
@@ -48,7 +48,7 @@ const SubmissionsStatus = sequelize.define(
       allowNull: true,
     },
     updatedBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
   },

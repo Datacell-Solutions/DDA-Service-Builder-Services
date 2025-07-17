@@ -3,8 +3,8 @@ const { DataTypes, Sequelize } = require("sequelize");
 const sequelize = require("../../config/database");
 const { v4: uuidv4 } = require("uuid");
 
-const ServicePhases = sequelize.define(
-  "ServicePhases",
+const ServiceFlows = sequelize.define(
+  "ServiceFlows",
   {
     id: {
       type: DataTypes.INTEGER,
@@ -17,10 +17,6 @@ const ServicePhases = sequelize.define(
       allowNull: false,
       defaultValue: uuidv4,
     },
-    phaseId: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
     serviceId: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -28,6 +24,14 @@ const ServicePhases = sequelize.define(
         model: 'Services',
         key: 'dguid',
       },
+    },
+    title: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -48,11 +52,11 @@ const ServicePhases = sequelize.define(
     },
   },
   {
-    tableName: "ServicePhases",
+    tableName: "ServiceFlows",
     timestamps: false, // Disable timestamps
     defaultScope: {
-      attributes: { exclude: ["id", "serviceId", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
+      attributes: { exclude: ["id", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
     },
   }
 );
-module.exports = ServicePhases;
+module.exports = ServiceFlows;

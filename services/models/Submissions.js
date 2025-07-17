@@ -35,7 +35,7 @@ const Submissions = sequelize.define(
       defaultValue: Sequelize.NOW,
     },
     createdBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     updatedAt: {
@@ -43,7 +43,7 @@ const Submissions = sequelize.define(
       allowNull: true,
     },
     updatedBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
   },
@@ -51,7 +51,7 @@ const Submissions = sequelize.define(
     tableName: "Submissions",
     timestamps: false, // Disable timestamps
     defaultScope: {
-      attributes: { exclude: ["id", "serviceId", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
+      attributes: { exclude: ["id", "createdAt", "createdBy", "updatedAt", "updatedBy"] },
     },
   }
 );

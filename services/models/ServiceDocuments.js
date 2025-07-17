@@ -40,7 +40,7 @@ const ServiceDocuments = sequelize.define(
       defaultValue: Sequelize.NOW,
     },
     createdBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     updatedAt: {
@@ -48,7 +48,7 @@ const ServiceDocuments = sequelize.define(
       allowNull: true,
     },
     updatedBy: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
   },
