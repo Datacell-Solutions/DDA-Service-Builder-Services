@@ -258,23 +258,22 @@ const getService = async (req, res) => {
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
-      include: [
-        {
-          model: ServiceDocuments,
-          as: "documents",
-          required: false,
-        },
-        {
-          model: ServiceFees,
-          as: "fees",
-          required: false,
-        },
-      ],
     });
 
     if (!service) {
       return res.json(errorResponse("Service not found", 404));
     }
+
+    const documents = await ServiceDocuments.findAll({
+      where: { serviceId: service.dguid },
+    });
+
+    const fees = await ServiceFees.findAll({
+      where: { serviceId: service.dguid },
+    });
+
+    service.dataValues.documents = documents;
+    service.dataValues.fees = fees;
 
     const submissions = await Submissions.findAll({
       where: { serviceId: service.dguid },
