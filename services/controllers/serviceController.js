@@ -135,6 +135,7 @@ const addService = async (req, res) => {
 const updateService = async (req, res) => {
   const userName = req.user.userName;
   const { serviceId } = req.params;
+
   const {
     submissionId,
     nameEn,
@@ -158,7 +159,7 @@ const updateService = async (req, res) => {
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
-      attributes: { include: ["id"] },
+      attributes: { include: ["id", "dguid"] },
     });
     if (!service) {
       return res.json(errorResponse("Service not found", 404));
@@ -166,6 +167,8 @@ const updateService = async (req, res) => {
 
     await service.update(
       {
+        id: service.id,
+        dguid: service.dguid,
         nameEn,
         nameAr,
         serviceCode,
@@ -190,9 +193,9 @@ const updateService = async (req, res) => {
         where: { serviceId: service.dguid },
         transaction: t,
       });
-
-      for (const doc of documents) {
-        await ServiceDocuments.create(
+      console.log({ documents });
+      const createPromises = documents.map((doc) => {
+        return ServiceDocuments.create(
           {
             serviceId: service.dguid,
             documentNameEn: doc.documentNameEn,
@@ -201,7 +204,10 @@ const updateService = async (req, res) => {
           },
           { transaction: t }
         );
-      }
+      });
+
+      // Wait for all document creation promises to resolve
+      await Promise.all(createPromises);
     }
 
     if (Array.isArray(fees)) {
@@ -218,6 +224,7 @@ const updateService = async (req, res) => {
             titleAr: fee.titleAr,
             descriptionEn: fee.descriptionEn,
             descriptionAr: fee.descriptionAr,
+            amount: fee.amount,
             createdBy: req.user.userName,
           },
           { transaction: t }
@@ -890,7 +897,7 @@ const approveRejectDevelop = async (
           ],
           order: [["createdAt", "DESC"]],
         });
-        
+
         const hasPushedProduction = submissions.some((sub) =>
           (sub.submissionsStatus || []).some(
             (status) => status.status === SubmissionStatus.PUSHED_PRODUCTION
@@ -959,7 +966,7 @@ const approveRejectDevelop = async (
           ],
           order: [["createdAt", "DESC"]],
         });
-        
+
         const hasPushedProduction = submissions.some((sub) =>
           (sub.submissionsStatus || []).some(
             (status) => status.status === SubmissionStatus.PUSHED_PRODUCTION
