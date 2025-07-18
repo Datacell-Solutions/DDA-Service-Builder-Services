@@ -27,6 +27,9 @@ services:
     environment:
       - NODE_ENV=development
     command: npm run start
+    depends_on:
+      datadb:
+        condition: service_healthy
 
 volumes:
   pg_datadb:
