@@ -194,8 +194,8 @@ const updateService = async (req, res) => {
         transaction: t,
       });
       console.log({ documents });
-      const createPromises = documents.map((doc) => {
-        return ServiceDocuments.create(
+      for (const doc of documents) {
+        await ServiceDocuments.create(
           {
             serviceId: service.dguid,
             documentNameEn: doc.documentNameEn,
@@ -204,10 +204,7 @@ const updateService = async (req, res) => {
           },
           { transaction: t }
         );
-      });
-
-      // Wait for all document creation promises to resolve
-      await Promise.all(createPromises);
+      }
     }
 
     if (Array.isArray(fees)) {
