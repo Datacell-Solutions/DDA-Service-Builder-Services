@@ -10,6 +10,8 @@ const SubmissionsStatus = require("./SubmissionsStatus.js");
 const ServiceEnvisioning = require("./ServiceEnvisioning.js");
 const ServiceFlows = require("./ServiceFlows.js");
 const ServiceDesigns = require("./ServiceDesigns.js");
+const ServiceScreensQA = require("./ServiceScreensQA.js");
+const ServiceScreensDev = require("./ServiceScreensDev.js");
 
 Services.hasMany(ServiceDocuments, {
   foreignKey: "serviceId",
@@ -99,6 +101,28 @@ ServiceDesigns.belongsTo(Services, {
   targetKey: "dguid",
 });
 
+Services.hasMany(ServiceScreensDev, {
+  foreignKey: "serviceId",
+  sourceKey: "dguid",
+  as: "serviceScreensDev",
+});
+ServiceScreensDev.belongsTo(Services, {
+  foreignKey: "serviceId",
+  as: "service",
+  targetKey: "dguid",
+});
+
+Services.hasMany(ServiceScreensQA, {
+  foreignKey: "serviceId",
+  sourceKey: "dguid",
+  as: "serviceScreensQA",
+});
+ServiceScreensQA.belongsTo(Services, {
+  foreignKey: "serviceId",
+  as: "service",
+  targetKey: "dguid",
+});
+
 module.exports = {
   Clients,
   DSessions,
@@ -110,5 +134,7 @@ module.exports = {
   SubmissionsStatus,
   ServiceEnvisioning,
   ServiceFlows,
-  ServiceDesigns
+  ServiceDesigns,
+  ServiceScreensDev,
+  ServiceScreensQA
 };

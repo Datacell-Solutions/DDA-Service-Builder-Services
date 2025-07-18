@@ -15,8 +15,6 @@ const {
   getAllowedActions,
 } = require("../../utils/actionMatrixHandler");
 
-//Add createdBy and updatedBy fields
-//check service owner
 const addService = async (req, res) => {
   const {
     nameEn,
@@ -383,7 +381,7 @@ const getAllServices = async (req, res) => {
 
       if (userType !== "entity") {
         const defineSubmission = sortedSubs.find(
-          (sub) => sub.phaseKey === "DEFINE"
+          (sub) => sub.phaseKey === process.env.DEFINE_PHASE_KEY
         );
 
         if (defineSubmission) {
@@ -392,19 +390,20 @@ const getAllServices = async (req, res) => {
           ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
           const latestDefineStatus = sortedDefineStatuses[0]?.status;
 
-          if (latestDefineStatus === "draft") {
+          if (latestDefineStatus === SubmissionStatus.DRAFT) {
             return false;
           }
         }
       }
 
       if (userRole === "technical") {
-        const latestSubmission = sortedSubs[0];
-        const latestStatuses = [
-          ...(latestSubmission.submissionsStatus || []),
-        ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        const latestStatus = latestStatuses[0]?.status;
-        return latestStatus === "develop";
+        const defineSubmission = sortedSubs.find(
+          (sub) => sub.phaseKey === process.env.DEVELOPMENT_PHASE_KEY
+        );
+
+        if (defineSubmission) {
+          return true;
+        }
       }
 
       return true;
@@ -413,39 +412,52 @@ const getAllServices = async (req, res) => {
     const transformedServices = filteredServices.map((service) => {
       const serviceSubs = submissionsByService[service.dguid] || [];
 
-      const sortedSubs = [...serviceSubs]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .filter((sub) => {
-          if (userType === "entity") return true;
-
-          const statuses = sub.submissionsStatus || [];
-          const sortedStatuses = statuses.sort(
-            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-          );
-          const latestStatus = sortedStatuses[0]?.status?.toLowerCase();
-
-          // Filter out submission if latest status is draft and userType is not "entity"
-          return latestStatus !== "draft";
-        });
-
       const groupedSubs = {};
-      for (const submission of sortedSubs) {
+
+      for (const submission of serviceSubs) {
+        const phaseKey = submission.phaseKey;
         const statuses = submission.submissionsStatus || [];
+
         const sortedStatuses = statuses.sort(
           (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
         );
-        const currentStatus = sortedStatuses[0]?.status || null;
 
+        const currentStatus = sortedStatuses[0]?.status?.toUpperCase() || null;
+
+        if (userType !== "entity" && currentStatus === "DRAFT") {
+          continue;
+        }
+
+        const existing = groupedSubs[phaseKey];
+        const existingCreatedAt = existing?.submission?.createdAt || 0;
+        const newCreatedAt = new Date(submission.createdAt).getTime();
+
+        if (!existing || newCreatedAt > existingCreatedAt) {
+          groupedSubs[phaseKey] = {
+            submission,
+            currentStatus,
+          };
+        }
+      }
+
+      const submissions = {};
+      for (const [phaseKey, { submission, currentStatus }] of Object.entries(
+        groupedSubs
+      )) {
         const subJson = submission.toJSON();
         delete subJson.submissionsStatus;
 
-        groupedSubs[submission.phaseKey] = {
+        submissions[phaseKey] = {
           ...subJson,
           currentStatus,
         };
       }
 
-      const currentSubmission = sortedSubs[0];
+      const allChosenSubs = Object.values(groupedSubs).map((s) => s.submission);
+      const currentSubmission = allChosenSubs.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      )[0];
+
       const currentStatuses = currentSubmission?.submissionsStatus || [];
       const sortedStatuses = currentStatuses.sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -462,7 +474,7 @@ const getAllServices = async (req, res) => {
 
       return {
         ...service.toJSON(),
-        submissions: groupedSubs,
+        submissions,
         actions,
       };
     });
@@ -572,6 +584,7 @@ const submitUserAction = async (req, res) => {
       return await approvePhase(
         req,
         res,
+        serviceId,
         lastSubmission.dguid,
         lastSubmission.currentStatus,
         action,
@@ -582,6 +595,7 @@ const submitUserAction = async (req, res) => {
       return await rejectPhase(
         req,
         res,
+        serviceId,
         lastSubmission.dguid,
         lastSubmission.currentStatus,
         action,
@@ -596,7 +610,6 @@ const submitUserAction = async (req, res) => {
 };
 
 const submitPhase = async (req, res, submissionId, currentStatus, comment) => {
-  console.log("Submitting phase:", submissionId, currentStatus, comment);
   if (
     currentStatus !== SubmissionStatus.DRAFT &&
     currentStatus !== SubmissionStatus.REJECTED &&
@@ -630,6 +643,7 @@ const submitPhase = async (req, res, submissionId, currentStatus, comment) => {
 const approvePhase = async (
   req,
   res,
+  serviceId,
   submissionId,
   currentStatus,
   action,
@@ -641,53 +655,15 @@ const approvePhase = async (
   const t = await Services.sequelize.transaction();
   try {
     if (action === "develop.approve") {
-      if (userType !== "dda") {
-        return res.json(
-          errorResponse("Only DDA can approve in this phase", 403)
-        );
-      } else {
-        if (userRole !== "business") {
-          if (currentStatus !== SubmissionStatus.SUBMITTED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in Submit status before it can be APPROVED",
-                400
-              )
-            );
-          }
-
-          await SubmissionsStatus.create(
-            {
-              submissionId,
-              status: SubmissionStatus.BUSINESS_APPROVED,
-              comment: comment,
-              createdBy: req.user.userName,
-            },
-            { transaction: t }
-          );
-        }
-
-        if (userRole !== "technical") {
-          if (currentStatus !== SubmissionStatus.BUSINESS_APPROVED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in Approve status before it can be APPROVED from Business",
-                400
-              )
-            );
-          }
-
-          await SubmissionsStatus.create(
-            {
-              submissionId,
-              status: SubmissionStatus.TECHNICAL_APPROVED,
-              comment: comment,
-              createdBy: req.user.userName,
-            },
-            { transaction: t }
-          );
-        }
-      }
+      approveRejectDevelop(
+        req,
+        res,
+        serviceId,
+        submissionId,
+        currentStatus,
+        false,
+        comment
+      );
     } else {
       if (currentStatus !== SubmissionStatus.SUBMITTED) {
         return res.json(
@@ -721,6 +697,7 @@ const approvePhase = async (
 const rejectPhase = async (
   req,
   res,
+  serviceId,
   submissionId,
   currentStatus,
   action,
@@ -732,53 +709,15 @@ const rejectPhase = async (
   const t = await Services.sequelize.transaction();
   try {
     if (action === "develop.reject") {
-      if (userType !== "dda") {
-        return res.json(
-          errorResponse("Only DDA can approve in this phase", 403)
-        );
-      } else {
-        if (userRole !== "business") {
-          if (currentStatus !== SubmissionStatus.SUBMITTED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in Submit status before it can be REJECTED",
-                400
-              )
-            );
-          }
-
-          await SubmissionsStatus.create(
-            {
-              submissionId,
-              status: SubmissionStatus.BUSINESS_REJECTED,
-              comment: comment,
-              createdBy: req.user.userName,
-            },
-            { transaction: t }
-          );
-        }
-
-        if (userRole !== "technical") {
-          if (currentStatus !== SubmissionStatus.BUSINESS_APPROVED) {
-            return res.json(
-              errorResponse(
-                "Submission must be in Reject status before it can be APPROVED from Business",
-                400
-              )
-            );
-          }
-
-          await SubmissionsStatus.create(
-            {
-              submissionId,
-              status: SubmissionStatus.TECHNICAL_REJECTED,
-              comment: comment,
-              createdBy: req.user.userName,
-            },
-            { transaction: t }
-          );
-        }
-      }
+      approveRejectDevelop(
+        req,
+        res,
+        serviceId,
+        submissionId,
+        currentStatus,
+        true,
+        comment
+      );
     } else {
       if (currentStatus !== SubmissionStatus.SUBMITTED) {
         return res.json(
@@ -895,6 +834,188 @@ const getSubmissionDetails = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    return res.json(errorResponse("Internal server error", 500));
+  }
+};
+
+const approveRejectDevelop = async (
+  req,
+  res,
+  serviceId,
+  submissionId,
+  currentStatus,
+  isReject,
+  comment
+) => {
+  const userRole = req.user.role;
+  const userType = req.user.type;
+
+  const t = await Services.sequelize.transaction();
+  try {
+    if (userRole === "business" && userType === "entity") {
+      if (
+        currentStatus !== SubmissionStatus.PUSHED_QA &&
+        currentStatus !== SubmissionStatus.PUSHED_PRODUCTION &&
+        currentStatus !== SubmissionStatus.DDA_BUSINESS_APPROVED
+      ) {
+        return res.json(
+          errorResponse(
+            "Submission must be in Submit status before it can be APPROVED",
+            400
+          )
+        );
+      }
+      await SubmissionsStatus.create(
+        {
+          submissionId,
+          status: isReject
+            ? SubmissionStatus.BUSINESS_REJECTED
+            : SubmissionStatus.BUSINESS_APPROVED,
+          comment: comment,
+          createdBy: req.user.userName,
+        },
+        { transaction: t }
+      );
+
+      if (currentStatus === SubmissionStatus.DDA_BUSINESS_APPROVED) {
+        const submissions = await Submissions.findAll({
+          where: { serviceId },
+          include: [
+            {
+              model: SubmissionsStatus,
+              as: "submissionsStatus",
+              required: false,
+              attributes: ["dguid", "status", "comment", "createdAt"],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+        });
+        
+        const hasPushedProduction = submissions.some((sub) =>
+          (sub.submissionsStatus || []).some(
+            (status) => status.status === SubmissionStatus.PUSHED_PRODUCTION
+          )
+        );
+        if (hasPushedProduction) {
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.READY_TO_PUBLISH,
+              comment: comment,
+              createdBy: req.user.userName,
+            },
+            { transaction: t }
+          );
+        } else {
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.QA_APPROVED,
+              comment: comment,
+              createdBy: req.user.userName,
+            },
+            { transaction: t }
+          );
+        }
+      }
+    }
+
+    if (userRole === "business" && userType === "dda") {
+      if (
+        currentStatus !== SubmissionStatus.PUSHED_QA &&
+        currentStatus !== SubmissionStatus.PUSHED_PRODUCTION &&
+        currentStatus !== SubmissionStatus.BUSINESS_APPROVED
+      ) {
+        return res.json(
+          errorResponse(
+            "Submission must be in Submit status before it can be APPROVED",
+            400
+          )
+        );
+      }
+
+      await SubmissionsStatus.create(
+        {
+          submissionId,
+          status: isReject
+            ? SubmissionStatus.DDA_BUSINESS_REJECTED
+            : SubmissionStatus.DDA_BUSINESS_APPROVED,
+          comment: comment,
+          createdBy: req.user.userName,
+        },
+        { transaction: t }
+      );
+
+      if (currentStatus === SubmissionStatus.BUSINESS_APPROVED) {
+        const submissions = await Submissions.findAll({
+          where: { serviceId },
+          include: [
+            {
+              model: SubmissionsStatus,
+              as: "submissionsStatus",
+              required: false,
+              attributes: ["dguid", "status", "comment", "createdAt"],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+        });
+        
+        const hasPushedProduction = submissions.some((sub) =>
+          (sub.submissionsStatus || []).some(
+            (status) => status.status === SubmissionStatus.PUSHED_PRODUCTION
+          )
+        );
+        if (hasPushedProduction) {
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.READY_TO_PUBLISH,
+              comment: comment,
+              createdBy: req.user.userName,
+            },
+            { transaction: t }
+          );
+        } else {
+          await SubmissionsStatus.create(
+            {
+              submissionId,
+              status: SubmissionStatus.QA_APPROVED,
+              comment: comment,
+              createdBy: req.user.userName,
+            },
+            { transaction: t }
+          );
+        }
+      }
+    }
+
+    if (userRole === "technical" && userType === "dda") {
+      if (currentStatus !== SubmissionStatus.SUBMITTED) {
+        return res.json(
+          errorResponse(
+            "Submission must be in Approve status before it can be SUBMITTED",
+            400
+          )
+        );
+      }
+
+      await SubmissionsStatus.create(
+        {
+          submissionId,
+          status: isReject
+            ? SubmissionStatus.DDA_TECHNICAL_REJECTED
+            : SubmissionStatus.DDA_TECHNICAL_APPROVED,
+          comment: comment,
+          createdBy: req.user.userName,
+        },
+        { transaction: t }
+      );
+    }
+
+    await t.commit();
+  } catch (error) {
+    await t.rollback();
+    console.error(error);
     return res.json(errorResponse("Internal server error", 500));
   }
 };
