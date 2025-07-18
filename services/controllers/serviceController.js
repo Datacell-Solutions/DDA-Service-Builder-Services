@@ -159,7 +159,7 @@ const updateService = async (req, res) => {
   try {
     const service = await Services.findOne({
       where: { dguid: serviceId },
-      attributes: { include: ["id", "dguid"] },
+      attributes: { include: ["id"] },
     });
     if (!service) {
       return res.json(errorResponse("Service not found", 404));
@@ -167,8 +167,6 @@ const updateService = async (req, res) => {
 
     await service.update(
       {
-        id: service.id,
-        dguid: service.dguid,
         nameEn,
         nameAr,
         serviceCode,
