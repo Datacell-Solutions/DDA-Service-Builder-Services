@@ -229,18 +229,18 @@ const updateService = async (req, res) => {
       }
     }
 
-    const submission = await Submissions.findOne({
-      attributes: { include: ["id"] },
-      where: { dguid: submissionId },
-    });
-    await SubmissionsStatus.create(
-      {
-        submissionId: submission.dguid,
-        status: SubmissionStatus.DRAFT,
-        createdBy: req.user.userName,
-      },
-      { transaction: t }
-    );
+    // const submission = await Submissions.findOne({
+    //   attributes: { include: ["id"] },
+    //   where: { dguid: submissionId },
+    // });
+    // await SubmissionsStatus.create(
+    //   {
+    //     submissionId: submission.dguid,
+    //     status: SubmissionStatus.DRAFT,
+    //     createdBy: req.user.userName,
+    //   },
+    //   { transaction: t }
+    // );
 
     await t.commit();
     return res.json(successResponse(true));
