@@ -1,7 +1,7 @@
 services:
-  datadb:
+  pg_dda_datadb:
     image: postgres:17
-    container_name: dda_datadb
+    container_name: pg_dda_datadb
     ports:
       - "5777:5432"
     environment:
@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: PassSecure987
     volumes:
-      - pg_datadb:/var/lib/postgresql/data
+      - pg_datadbstore:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
@@ -28,8 +28,8 @@ services:
       - NODE_ENV=development
     command: npm run start
     depends_on:
-      datadb:
+      pg_dda_datadb:
         condition: service_healthy
 
 volumes:
-  pg_datadb:
+  pg_datadbstore:
