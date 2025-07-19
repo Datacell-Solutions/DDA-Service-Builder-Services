@@ -198,6 +198,7 @@ const addEnvisioning = async (req, res) => {
 
 const updateEnvisioning = async (req, res) => {
   const { serviceId, flows } = req.body;
+
   const userName = req.user.userName;
   const userRole = req.user.role;
   const userType = req.user.type;
@@ -371,12 +372,7 @@ const getEnvisioning = async (req, res) => {
 
     const envisioning = await ServiceEnvisioning.findOne({
       where: { serviceId },
-      attributes: [
-        "testCase",
-        "brd",
-        "apisDocumentation",
-        "apisCollection",
-      ],
+      attributes: ["testCase", "brd", "apisDocumentation", "apisCollection"],
     });
 
     const flows = await ServiceFlows.findAll({
@@ -391,7 +387,8 @@ const getEnvisioning = async (req, res) => {
         envisioning: envisioning || {},
         flows: flows.map((flow) => ({
           title: flow.title,
-          json: typeof flow.json === "string" ? JSON.parse(flow.json) : flow.json,
+          json:
+            typeof flow.json === "string" ? JSON.parse(flow.json) : flow.json,
           createdBy: flow.createdBy,
           createdAt: flow.createdAt,
         })),
@@ -400,7 +397,9 @@ const getEnvisioning = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ code: 500, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ code: 500, message: "Internal server error" });
   }
 };
 
