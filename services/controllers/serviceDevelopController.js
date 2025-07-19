@@ -305,6 +305,8 @@ const pushToProd = async (req, res) => {
   }
 };
 
+//all the gets unauthenticated
+
 module.exports = {
   addServiceScreen,
   pushToQA,

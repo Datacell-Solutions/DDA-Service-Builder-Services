@@ -12,6 +12,7 @@ const ServiceFlows = require("./ServiceFlows.js");
 const ServiceDesigns = require("./ServiceDesigns.js");
 const ServiceScreensQA = require("./ServiceScreensQA.js");
 const ServiceScreensDev = require("./ServiceScreensDev.js");
+const Notifications = require("./Notifications.js");
 
 Services.hasMany(ServiceDocuments, {
   foreignKey: "serviceId",
@@ -136,5 +137,6 @@ module.exports = {
   ServiceFlows,
   ServiceDesigns,
   ServiceScreensDev,
-  ServiceScreensQA
+  ServiceScreensQA,
+  Notifications
 };
