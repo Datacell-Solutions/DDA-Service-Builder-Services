@@ -8,6 +8,7 @@ const notificationRoutes = require("./services/notificationsRoutes");
 const path = require("path");
 const { exchangeToken } = require("./middlewares/checkPrivilege");
 const cookieParser = require("cookie-parser");
+const serviceDevelop = require("./services/controllers/serviceDevelopController");
 
 const app = express();
 
@@ -23,6 +24,9 @@ app.use("/api/client", authRoutes);
 app.use("/api/service", exchangeToken(), router);
 app.use("/api/notifications", notificationRoutes);
 app.get("/initialize-database", attempSynchronization);
+
+router.get("/getDevScreen/:screenId", serviceDevelop.getDevScreen);
+router.get("/getQAScreen/:screenId", serviceDevelop.getQAScreen);
 
 const startServer = async () => {
   try {
